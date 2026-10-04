@@ -33,37 +33,45 @@ Core domains:
 - PostgreSQL connector
 - Common connector interface for consistent actions
 
-### 2.4 Observability Services (`services/observability`)
+### 2.4 Observability
 
-- Metrics ingestion/adapters
-- Log collection adapters
-- Alerting and notification pipeline integration
+Implemented inside the control plane, not as a separate service:
 
-### 2.5 Security Services (`services/security`)
+- Metric samples collected by a connector and stored per engine
+- An event stream that jobs and operators can append to
+- Alert rules for availability, connections, replication lag, and backup age, with enable and disable
 
-- Access policy engine integration
-- Secret and credential handling interfaces
-- Audit event emission and reporting
+There is no external metrics or log shipping adapter in this build.
+
+### 2.5 Security
+
+Implemented inside the control plane:
+
+- JWT roles (`admin`, `moderator`, `viewer`) and service accounts
+- `local://` credential references, secret versions, and optional `ALTER ROLE` / `ALTER USER` rotation
+- Hardening checks, `require_ssl` and `limit_superusers` policies, and CSV or JSON audit export
 
 ## 3. Deployment profiles
 
-### 3.1 Simple profile
+### 3.1 Simple profile (shipped)
 
-- Single control-plane instance
-- Direct management of one or a few DB servers
-- Minimal external dependencies
+- One control-plane process, SQLite, and the console static files
+- `deploy/Dockerfile` and `deploy/docker-compose.yml`
+- Direct management of registered engines
 
-### 3.2 Standard profile
+### 3.2 Standard profile (target)
 
 - Highly available control-plane components
-- Managed DB groups with role-aware operations
-- External metrics/logging stack
+- An external metrics and logging stack
 
-### 3.3 Cluster/enterprise profile
+No compose file or chart ships for this profile.
+
+### 3.3 Cluster/enterprise profile (target)
 
 - Multi-region or multi-AZ operation
-- Policy-driven automation and compliance layers
-- Strong audit and separation-of-duties support
+- Separation of duties beyond the three roles
+
+No manifests ship for this profile. Cluster topology in the product is the database cluster record (primary, replica, witness), not a multi-region control plane.
 
 ## 4. Initial data model concepts
 
@@ -82,4 +90,4 @@ Core domains:
 3. Implement inventory + health checks
 4. Add role-based access enforcement
 5. Add GUI shell and first management views
-6. Expand connectors and observability/security integrations
+6. PostgreSQL, MySQL, and MariaDB connectors, plus observability and security inside the control plane

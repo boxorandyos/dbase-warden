@@ -1,0 +1,21 @@
+services:
+  control-plane:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "3101:3101"
+    environment:
+      NODE_ENV: production
+      PORT: 3101
+      DBASE_DB_PATH: /data/dbase.sqlite
+      DBASE_JWT_SECRET: ${DBASE_JWT_SECRET:?set DBASE_JWT_SECRET}
+      DBASE_ADMIN_USERNAME: ${DBASE_ADMIN_USERNAME:-admin}
+      DBASE_ADMIN_PASSWORD: ${DBASE_ADMIN_PASSWORD:?set DBASE_ADMIN_PASSWORD}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3101}
+      WEB_DIST: /app/apps/web-console/dist
+    volumes:
+      - dbase-data:/data
+
+volumes:
+  dbase-data:

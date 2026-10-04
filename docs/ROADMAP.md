@@ -8,34 +8,35 @@
 
 ## Phase 1 - Foundations
 
-- [ ] Define API contract and versioning strategy
-- [ ] Implement control-plane skeleton with health/auth endpoints
-- [ ] Define engine connector interface and plugin lifecycle
-- [ ] Add first connector (PostgreSQL reference implementation)
+- [x] Define API contract and versioning strategy
+- [x] Implement control-plane skeleton with health/auth endpoints
+- [x] Define engine connector interface and plugin lifecycle
+- [x] Add first connector (PostgreSQL reference implementation)
+- [x] Operator console shell and first inventory views
 
 ## Phase 2 - Core Management
 
-- [ ] Server inventory registration and sync
-- [ ] Engine discovery and status collection
-- [ ] Common operations (start/stop/restart/config validation)
-- [ ] Job queue and operation audit trail
+- [x] Server inventory registration and sync
+- [x] Engine discovery and status collection
+- [x] Common operations (start/stop/restart/config validation)
+- [x] Job queue and operation audit trail
 
 ## Phase 3 - Monitoring and Alerting
 
-- [ ] Metric pipelines and baseline dashboards
-- [ ] Log/event stream adapters
-- [ ] Alert rules for availability, capacity, and replication health
+- [x] Metric pipelines and baseline dashboards
+- [x] Log/event stream adapters
+- [x] Alert rules for availability, capacity, and replication health
 
 ## Phase 4 - Security and Compliance
 
-- [ ] RBAC + service account support
-- [ ] Secret reference abstraction and rotation workflows
-- [ ] Hardening checks and policy enforcement rules
-- [ ] Audit reporting and compliance export paths
+- [x] RBAC + service account support
+- [x] Secret reference abstraction and rotation workflows
+- [x] Hardening checks and policy enforcement rules
+- [x] Audit reporting and compliance export paths
 
 ## Phase 5 - Cluster and Advanced Operations
 
-- [ ] Cluster topology management and role transitions
-- [ ] Backup/restore orchestration
-- [ ] Disaster recovery runbooks
-- [ ] Multi-environment tenancy support
+- [x] Cluster topology management and role transitions
+- [x] Backup/restore orchestration
+- [x] Disaster recovery runbooks
+- [x] Multi-environment tenancy support

@@ -1,9 +1,11 @@
-# Web Console (Planned)
+# Web console
 
-Operator-facing GUI for Dbase Warden.
+Operator GUI for Dbase Warden.
 
-Design constraints:
+The shell follows the Warden family: top bar sections (Pulse, Estate, Operations, Fleet), sharp corners, uppercase nav tracking, and a split login. Color tokens use indigo as the primary accent and teal as the secondary accent so the product is distinct from Nginx Warden's cyan theme.
 
-- Match Nginx Warden and Mail Warden UX patterns
-- Use Dbase Warden theme tokens for color differentiation
-- Keep feature flows consistent across Warden products
+```bash
+pnpm --filter @dbase-warden/web-console dev
+```
+
+Dev server: `http://localhost:8188`, with `/api` proxied to port `3101`.

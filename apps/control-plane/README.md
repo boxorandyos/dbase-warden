@@ -1,8 +1,13 @@
-# Control Plane (Planned)
+# Control plane
 
-Planned responsibilities:
+HTTP API for inventory, auth, jobs, and audit.
 
-- Resource inventory and topology API
-- AuthN/AuthZ enforcement
-- Orchestration for jobs and workflows
-- Integration points for connectors, observability, and security modules
+- `GET /api/health` liveness
+- `/api/v1/*` versioned resources (see `docs/API.md`)
+- SQLite file from `DBASE_DB_PATH` (default `./data/dbase.sqlite`)
+- JWT roles: `admin`, `moderator`, `viewer`
+
+```bash
+pnpm --filter @dbase-warden/control-plane dev
+pnpm --filter @dbase-warden/control-plane test
+```
