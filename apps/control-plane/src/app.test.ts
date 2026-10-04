@@ -169,6 +169,8 @@ describe('control plane API', () => {
       engineId: down.body.data.id,
     });
     expect(failed.status).toBe(422);
+    expect(failed.body.success).toBe(false);
+    expect(failed.body.message).toBe('connection refused');
     expect(failed.body.data.status).toBe('failed');
 
     const audit = await request(app()).get('/api/v1/audit').set('Authorization', `Bearer ${ops}`);

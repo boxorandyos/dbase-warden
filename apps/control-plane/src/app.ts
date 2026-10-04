@@ -125,7 +125,11 @@ export function createApp(options: AppOptions): express.Express {
         engineId: req.params.id,
         actor: req.user!.username,
       });
-      res.status(job.status === 'succeeded' ? 200 : 422).json({ success: job.status === 'succeeded', data: job });
+      res.status(job.status === 'succeeded' ? 200 : 422).json({
+        success: job.status === 'succeeded',
+        message: job.error ?? undefined,
+        data: job,
+      });
     } catch (error) {
       next(error);
     }
@@ -201,7 +205,11 @@ export function createApp(options: AppOptions): express.Express {
         engineId: String(req.body?.engineId ?? ''),
         actor: req.user!.username,
       });
-      res.status(job.status === 'succeeded' ? 201 : 422).json({ success: job.status === 'succeeded', data: job });
+      res.status(job.status === 'succeeded' ? 201 : 422).json({
+        success: job.status === 'succeeded',
+        message: job.error ?? undefined,
+        data: job,
+      });
     } catch (error) {
       next(error);
     }
