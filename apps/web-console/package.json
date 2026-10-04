@@ -1,0 +1,30 @@
+{
+  "name": "@dbase-warden/web-console",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 8188 --host 0.0.0.0",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "tsc -p tsconfig.json --noEmit",
+    "preview": "vite preview --port 8188 --host 0.0.0.0",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.90.2",
+    "lucide-react": "^0.544.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-router-dom": "^7.9.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.14",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.2",
+    "tailwindcss": "^4.1.14",
+    "typescript": "^5.8.3",
+    "vite": "^7.1.5"
+  }
+}

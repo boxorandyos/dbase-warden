@@ -8,10 +8,11 @@
 
 ## Phase 1 - Foundations
 
-- [ ] Define API contract and versioning strategy
-- [ ] Implement control-plane skeleton with health/auth endpoints
-- [ ] Define engine connector interface and plugin lifecycle
-- [ ] Add first connector (PostgreSQL reference implementation)
+- [x] Define API contract and versioning strategy
+- [x] Implement control-plane skeleton with health/auth endpoints
+- [x] Define engine connector interface and plugin lifecycle
+- [x] Add first connector (PostgreSQL reference implementation)
+- [x] Operator console shell and first inventory views
 
 ## Phase 2 - Core Management
 

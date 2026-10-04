@@ -20,6 +20,9 @@ venv/
 *.log
 tmp/
 .cache/
+data/
+*.sqlite
+*.sqlite3
 
 # IDE
 .idea/

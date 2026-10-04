@@ -36,15 +36,34 @@ The architecture is intentionally extensible for additional SQL engines and supp
 4. **Security by Default**  
    Least-privilege access, auditable actions, and secure defaults everywhere.
 
-## Repository bootstrap
+## Repository layout
 
-This repository is initialized with planning and structure scaffolding to start implementation:
+- `docs/` architecture, roadmap, UI theme, and the [v1 API contract](docs/API.md)
+- `apps/control-plane/` versioned HTTP API, auth, inventory, jobs, and audit
+- `apps/web-console/` operator console aligned with the Warden family shell
+- `services/engines/` connector interface, plugin lifecycle, and the PostgreSQL reference connector
+- `deploy/` container image for the combined API and console
 
-- `docs/` for architecture, roadmap, and UI/theming guidance
-- `apps/` for frontend and control-plane applications
-- `services/` for engine-specific and shared service modules
-- `deploy/` for deployment topology and environment assets
+## Run locally
+
+Requires Node.js 22 and pnpm 8.
+
+```bash
+pnpm install
+pnpm --filter @dbase-warden/engines build
+pnpm --filter @dbase-warden/control-plane dev
+pnpm --filter @dbase-warden/web-console dev
+```
+
+The API listens on port **3101**. The console listens on port **8188** and proxies `/api` to the control plane.
+
+When the user table is empty and `DBASE_ADMIN_PASSWORD` is unset outside production, the API creates `admin` / `dbase-admin` and prints a warning. Set `DBASE_ADMIN_PASSWORD` (8+ characters) and `DBASE_JWT_SECRET` before any shared deployment. See `.env.example`.
+
+```bash
+pnpm test
+pnpm build
+```
 
 ## Current status
 
-This is an initialization baseline and does not yet include production code.
+Phase 1 is in place: versioned API, role checks, inventory, job and audit records, the connector lifecycle, a PostgreSQL health/discovery connector, and the first console views. MySQL and MariaDB plugins are registered and report that they are not implemented yet. The control plane stores its own state in SQLite, including engine passwords behind a `local://` credential reference. Swap that secret provider before production use.
