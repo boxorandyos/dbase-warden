@@ -1,0 +1,26 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Node / web
+node_modules/
+dist/
+build/
+.next/
+.turbo/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Logs and runtime
+*.log
+tmp/
+.cache/
+
+# IDE
+.idea/
+.vscode/
