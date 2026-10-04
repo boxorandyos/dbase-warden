@@ -49,15 +49,15 @@ export function App() {
           <Route path="/engines" element={<EnginesPage role={me.data.role} />} />
           <Route path="/clusters" element={<ClustersPage role={me.data.role} />} />
           <Route path="/environments" element={<EnvironmentsPage role={me.data.role} />} />
-          <Route path="/alerts" element={<AlertsPage />} />
-          <Route path="/events" element={<EventsPage />} />
+          <Route path="/alerts" element={<AlertsPage role={me.data.role} />} />
+          <Route path="/events" element={<EventsPage role={me.data.role} />} />
           <Route path="/jobs" element={<JobsPage />} />
-          <Route path="/backups" element={<BackupsPage />} />
+          <Route path="/backups" element={<BackupsPage role={me.data.role} />} />
           <Route path="/runbooks" element={<RunbooksPage role={me.data.role} />} />
           <Route path="/audit" element={<AuditPage />} />
-          <Route path="/users" element={<UsersPage role={me.data.role} />} />
+          <Route path="/users" element={me.data.role === 'admin' ? <UsersPage role={me.data.role} /> : <Navigate to="/dashboard" replace />} />
           <Route path="/service-accounts" element={me.data.role === 'admin' ? <AccountsPage /> : <Navigate to="/dashboard" replace />} />
-          <Route path="/findings" element={<FindingsPage />} />
+          <Route path="/findings" element={<FindingsPage role={me.data.role} />} />
           <Route path="/connectors" element={<ConnectorsPage />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

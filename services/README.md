@@ -1,9 +1,7 @@
 # Services
 
-Shared and domain-specific service modules.
+Shared domain modules used by the control plane.
 
-Planned submodules:
+- `engines/` implements the connector interface for PostgreSQL, MySQL, and MariaDB: health, discovery, metrics, backup catalogs, hardening checks, promotion, and password rotation.
 
-- `engines/` for MySQL, MariaDB, PostgreSQL connectors
-- `observability/` for metrics, logs, and alerts integration
-- `security/` for policy, credentials, and audit helpers
+Metrics, alert evaluation, event ingest, policies, secret versions, and audit export live in the control plane (`apps/control-plane/src/catalog.ts` and `operations.ts`). They are not separate processes.

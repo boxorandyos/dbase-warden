@@ -82,9 +82,11 @@ Tokens expire after 12 hours.
 }
 ```
 
-The response includes `credentialRef` (`local://<engine-id>`) and never returns the password. Phase 1 stores that secret in the control-plane database file (mode `0600`). Replace this local provider before production use.
+The response includes `credentialRef` (`local://<engine-id>`) and never returns the password. The secret is stored in the control-plane database file (mode `0600`). Replace this local provider before production use.
 
-`kind` is `postgresql`, `mysql`, or `mariadb`. PostgreSQL is the reference connector. MySQL and MariaDB are registered plugins whose probes fail with a clear not-implemented error.
+`kind` is `postgresql`, `mysql`, or `mariadb`. All three connectors implement health, discovery, metrics, backup catalogs, hardening, promotion, and password rotation. Optional `serviceUnit` is the systemd unit used by `engine.control`.
+
+`POST /api/v1/jobs` with `type: "secret.rotate"` accepts `engineId`, `password`, and `apply`. `apply: true` runs the connector statement. The password is never written to the job result or the audit export.
 
 ### Jobs
 
@@ -113,13 +115,16 @@ These routes use the same envelope, roles, and `/api/v1` version.
 | `GET` `POST` | `/api/v1/environments` | read: any, create: admin |
 | `GET` `POST` `DELETE` | `/api/v1/service-accounts` | admin. Create returns the `dw_` token once |
 | `GET` `POST` | `/api/v1/alerts/rules` | read: any, create: moderator, admin |
+| `PATCH` | `/api/v1/alerts/rules/:id` | moderator, admin. Body `{ "enabled": true \| false }` |
 | `GET` | `/api/v1/alerts` | any |
 | `GET` | `/api/v1/metrics/:engineId` | any |
 | `GET` `POST` | `/api/v1/events` | read: any, ingest: moderator, admin |
 | `GET` | `/api/v1/backups` | any |
 | `GET` | `/api/v1/findings` | any |
 | `GET` `POST` | `/api/v1/policies` | read: any, create: admin |
-| `POST` | `/api/v1/policies/evaluate` | any |
+| `PATCH` | `/api/v1/policies/:id` | admin. Body `{ "enabled": true \| false }` |
+| `GET` | `/api/v1/policies/violations` | any. Read-only evaluation |
+| `POST` | `/api/v1/policies/evaluate` | any. Same payload as the GET |
 | `GET` `POST` | `/api/v1/runbooks` | read: any, write: moderator, admin |
 | `GET` | `/api/v1/secrets/:engineId` | admin. Versions only, never the secret |
 | `GET` | `/api/v1/audit/export?format=json\|csv` | any |

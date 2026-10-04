@@ -82,6 +82,7 @@ export function Shell({ user, children }: { user: ApiUser; children: ReactNode }
     window.location.assign('/login');
   }
 
+  const adminOnly = new Set(user.role === 'admin' ? [] : ['/users', '/service-accounts']);
   const links = (
     <nav className="flex flex-col gap-1 md:flex-row md:items-center md:gap-1">
       {sections.map((section) =>
@@ -112,7 +113,7 @@ export function Shell({ user, children }: { user: ApiUser; children: ReactNode }
                 <div className="border-b border-border px-3 py-2 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
                   {section.label}
                 </div>
-                {section.items.map((item) => {
+                {section.items.filter((item) => !adminOnly.has(item.path)).map((item) => {
                   const Icon = item.icon;
                   return (
                     <NavLink

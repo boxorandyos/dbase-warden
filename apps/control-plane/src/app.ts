@@ -305,7 +305,31 @@ export function createApp(options: AppOptions): express.Express {
         kind: String(req.body?.kind ?? ''),
         threshold: Number(req.body?.threshold),
       });
+      options.store.audit({
+        actor: req.user!.username,
+        action: 'alert_rule.create',
+        resourceType: 'alert_rule',
+        resourceId: rule.id,
+        detail: rule.kind,
+      });
       res.status(201).json({ success: true, data: rule });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  api.patch('/v1/alerts/rules/:id', auth, authorize(...writers), (req, res, next) => {
+    try {
+      if (typeof req.body?.enabled !== 'boolean') throw new AppError(400, 'enabled must be true or false');
+      const rule = options.store.catalog.setRuleEnabled(req.params.id, req.body.enabled);
+      options.store.audit({
+        actor: req.user!.username,
+        action: 'alert_rule.update',
+        resourceType: 'alert_rule',
+        resourceId: rule.id,
+        detail: rule.enabled ? 'enabled' : 'disabled',
+      });
+      res.json({ success: true, data: rule });
     } catch (error) {
       next(error);
     }
@@ -353,10 +377,38 @@ export function createApp(options: AppOptions): express.Express {
   api.post('/v1/policies', auth, authorize('admin'), (req, res, next) => {
     try {
       const policy = options.store.catalog.createPolicy(req.body ?? {});
+      options.store.audit({
+        actor: req.user!.username,
+        action: 'policy.create',
+        resourceType: 'policy',
+        resourceId: policy.id,
+        detail: policy.kind,
+      });
       res.status(201).json({ success: true, data: policy });
     } catch (error) {
       next(error);
     }
+  });
+
+  api.patch('/v1/policies/:id', auth, authorize('admin'), (req, res, next) => {
+    try {
+      if (typeof req.body?.enabled !== 'boolean') throw new AppError(400, 'enabled must be true or false');
+      const policy = options.store.catalog.setPolicyEnabled(req.params.id, req.body.enabled);
+      options.store.audit({
+        actor: req.user!.username,
+        action: 'policy.update',
+        resourceType: 'policy',
+        resourceId: policy.id,
+        detail: policy.enabled ? 'enabled' : 'disabled',
+      });
+      res.json({ success: true, data: policy });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  api.get('/v1/policies/violations', auth, (_req, res) => {
+    res.json({ success: true, data: options.store.catalog.evaluatePolicies() });
   });
 
   api.post('/v1/policies/evaluate', auth, (_req, res) => {

@@ -325,6 +325,13 @@ export class Catalog {
     return record;
   }
 
+  setRuleEnabled(id: string, enabled: boolean): AlertRule {
+    const existing = this.listRules().find((rule) => rule.id === id);
+    if (!existing) throw new AppError(404, 'Alert rule not found');
+    this.db.prepare('UPDATE alert_rules SET enabled = ? WHERE id = ?').run(enabled ? 1 : 0, id);
+    return { ...existing, enabled };
+  }
+
   listAlerts(): AlertEvent[] {
     const rows = this.db
       .prepare(
@@ -595,6 +602,13 @@ export class Catalog {
       .prepare('INSERT INTO policies (id, name, kind, threshold, enabled, environment_id) VALUES (?, ?, ?, ?, 1, ?)')
       .run(record.id, record.name, record.kind, record.threshold, record.environmentId);
     return record;
+  }
+
+  setPolicyEnabled(id: string, enabled: boolean): PolicyRecord {
+    const existing = this.listPolicies().find((policy) => policy.id === id);
+    if (!existing) throw new AppError(404, 'Policy not found');
+    this.db.prepare('UPDATE policies SET enabled = ? WHERE id = ?').run(enabled ? 1 : 0, id);
+    return { ...existing, enabled };
   }
 
   evaluatePolicies(): Array<{ policyId: string; policyName: string; engineId: string; detail: string }> {

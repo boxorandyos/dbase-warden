@@ -41,7 +41,7 @@ The architecture is intentionally extensible for additional SQL engines and supp
 - `docs/` architecture, roadmap, UI theme, and the [v1 API contract](docs/API.md)
 - `apps/control-plane/` versioned HTTP API, auth, inventory, jobs, and audit
 - `apps/web-console/` operator console aligned with the Warden family shell
-- `services/engines/` connector interface, plugin lifecycle, and the PostgreSQL reference connector
+- `services/engines/` connector interface and the PostgreSQL, MySQL, and MariaDB connectors
 - `deploy/` container image for the combined API and console
 
 ## Run locally
@@ -66,4 +66,6 @@ pnpm build
 
 ## Current status
 
-The control plane covers inventory, jobs, metrics, alerts, events, backups, hardening policies, service accounts, secret rotation, cluster promotion, runbooks, and environments. PostgreSQL, MySQL, and MariaDB connectors collect health, metrics, backup catalogs, and hardening checks. Engine passwords stay behind a `local://` credential reference. Backup artifacts are catalogs of database names and sizes. Process control plans a `systemctl` action and runs it only when `DBASE_ALLOW_PROCESS_CONTROL=1`.
+The control plane and console cover inventory, jobs, metrics, alerts, events, backups, hardening policies, service accounts, secret rotation, cluster promotion, runbooks, and environments. PostgreSQL, MySQL, and MariaDB connectors collect health, metrics, backup catalogs, and hardening checks. Operators can create and disable alert rules and policies, record events, verify a backup catalog, rotate a `local://` secret, and plan start, stop, and restart when an engine has a service unit.
+
+Engine passwords stay in the control-plane database file. Backup artifacts are catalogs of database names and sizes, and restore verifies that catalog without replaying data files. Process control plans a `systemctl` action and runs it only when `DBASE_ALLOW_PROCESS_CONTROL=1`. MySQL and MariaDB promotion updates the recorded topology and does not change server `read_only`. Human users can read every environment; the console filters the current one. A service account pinned to an environment is rejected by the API if it asks for another. Jobs run inside the request that creates them.

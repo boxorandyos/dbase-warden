@@ -34,7 +34,7 @@ export function DashboardPage() {
             {connectors.data?.map((connector) => (
               <li key={connector.kind} className="flex items-center justify-between py-3 text-sm">
                 <span className="font-medium capitalize">{connector.kind}</span>
-                <Badge tone={connector.implemented ? 'ok' : 'muted'}>{connector.implemented ? 'Reference' : 'Registered'}</Badge>
+                <Badge tone={connector.implemented ? 'ok' : 'muted'}>{connector.implemented ? 'Ready' : 'Registered'}</Badge>
               </li>
             ))}
           </ul>
@@ -127,8 +127,10 @@ export function EnginesPage({ role }: { role: string }) {
   const engines = useQuery({ queryKey: ['engines'], queryFn: () => api<EngineRecord[]>('/api/v1/engines') });
   const rows = inEnvironment(engines.data, environment.id);
   const [open, setOpen] = useState(false);
+  const [rotateId, setRotateId] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const [probeError, setProbeError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [actionError, setActionError] = useState('');
 
   const create = useMutation({
     mutationFn: (body: Record<string, string | number>) =>
@@ -143,28 +145,34 @@ export function EnginesPage({ role }: { role: string }) {
   const probe = useMutation({
     mutationFn: (id: string) => api(`/api/v1/engines/${id}/health`, { method: 'POST' }),
     onSuccess: async () => {
-      setProbeError('');
+      setActionError('');
+      setNotice('Health recorded');
       await queryClient.invalidateQueries({ queryKey: ['engines'] });
       await queryClient.invalidateQueries({ queryKey: ['jobs'] });
     },
     onError: async (err: Error) => {
-      setProbeError(err.message);
+      setNotice('');
+      setActionError(err.message);
       await queryClient.invalidateQueries({ queryKey: ['engines'] });
       await queryClient.invalidateQueries({ queryKey: ['jobs'] });
     },
   });
 
   const job = useMutation({
-    mutationFn: (body: { type: string; engineId: string }) => api(`/api/v1/jobs`, { method: 'POST', body: JSON.stringify(body) }),
-    onSuccess: async () => {
-      setProbeError('');
+    mutationFn: (body: Record<string, string | boolean>) => api<JobRecord>(`/api/v1/jobs`, { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: async (record) => {
+      setRotateId(null);
+      setActionError('');
+      setNotice(jobNotice(record));
       await queryClient.invalidateQueries({ queryKey: ['jobs'] });
       await queryClient.invalidateQueries({ queryKey: ['alerts'] });
       await queryClient.invalidateQueries({ queryKey: ['backups'] });
       await queryClient.invalidateQueries({ queryKey: ['findings'] });
+      await queryClient.invalidateQueries({ queryKey: ['engines'] });
     },
     onError: async (err: Error) => {
-      setProbeError(err.message);
+      setNotice('');
+      setActionError(err.message);
       await queryClient.invalidateQueries({ queryKey: ['jobs'] });
     },
   });
@@ -172,7 +180,8 @@ export function EnginesPage({ role }: { role: string }) {
   return (
     <div className="space-y-4">
       <Toolbar title="Engine instances" action={canWrite(role) ? 'Add engine' : undefined} onAction={() => setOpen(true)} />
-      {probeError && <p className="text-sm text-destructive">{probeError}</p>}
+      {notice && <p className="text-sm text-muted-foreground">{notice}</p>}
+      {actionError && <p className="text-sm text-destructive">{actionError}</p>}
       <Card>
         <table className="w-full text-sm">
           <thead className="text-left text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
@@ -202,17 +211,36 @@ export function EnginesPage({ role }: { role: string }) {
                 </td>
                 <td className="text-right">
                   {canWrite(role) && (
-                    <div className="flex justify-end gap-1">
-                      {(['engine.health', 'engine.metrics', 'engine.backup', 'engine.harden'] as const).map((type) => (
+                    <div className="flex flex-wrap justify-end gap-1">
+                      {(['engine.health', 'engine.metrics', 'engine.discover', 'engine.validate', 'engine.backup', 'engine.harden'] as const).map((type) => (
                         <button
                           key={type}
                           className="border border-foreground/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
                           onClick={() => (type === 'engine.health' ? probe.mutate(engine.id) : job.mutate({ type, engineId: engine.id }))}
                           disabled={probe.isPending || job.isPending}
                         >
-                          {type === 'engine.health' ? 'Probe' : type === 'engine.metrics' ? 'Metrics' : type === 'engine.backup' ? 'Backup' : 'Scan'}
+                          {engineActionLabel(type)}
                         </button>
                       ))}
+                      {engine.serviceUnit &&
+                        (['start', 'stop', 'restart'] as const).map((action) => (
+                          <button
+                            key={action}
+                            className="border border-foreground/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
+                            onClick={() => job.mutate({ type: 'engine.control', engineId: engine.id, action })}
+                            disabled={job.isPending}
+                          >
+                            {action}
+                          </button>
+                        ))}
+                      {role === 'admin' && (
+                        <button
+                          className="border border-foreground/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
+                          onClick={() => setRotateId(engine.id)}
+                        >
+                          Rotate
+                        </button>
+                      )}
                     </div>
                   )}
                 </td>
@@ -234,8 +262,59 @@ export function EnginesPage({ role }: { role: string }) {
           />
         </Modal>
       )}
+      {rotateId && (
+        <Modal title="Rotate password" onClose={() => setRotateId(null)}>
+          <form
+            onSubmit={(event: FormEvent<HTMLFormElement>) => {
+              event.preventDefault();
+              const data = new FormData(event.currentTarget);
+              setNotice('');
+              setActionError('');
+              job.mutate({
+                type: 'secret.rotate',
+                engineId: rotateId,
+                password: String(data.get('password') ?? ''),
+                apply: data.get('apply') === 'on',
+              });
+            }}
+          >
+            <Field label="New password">
+              <input name="password" type="password" required minLength={8} className={inputClass} />
+            </Field>
+            <label className="mb-4 flex items-center gap-2 text-sm">
+              <input name="apply" type="checkbox" />
+              Apply on the engine
+            </label>
+            <p className="mb-3 text-xs text-muted-foreground">Apply runs ALTER ROLE or ALTER USER. Leaving it off stores a new local secret version only.</p>
+            {actionError && <p className="mb-3 text-sm text-destructive">{actionError}</p>}
+            <button disabled={job.isPending} className="h-11 w-full bg-primary text-sm font-semibold text-primary-foreground">
+              Rotate
+            </button>
+          </form>
+        </Modal>
+      )}
     </div>
   );
+}
+
+function engineActionLabel(type: string): string {
+  if (type === 'engine.health') return 'Probe';
+  if (type === 'engine.metrics') return 'Metrics';
+  if (type === 'engine.discover') return 'Discover';
+  if (type === 'engine.validate') return 'Validate';
+  if (type === 'engine.backup') return 'Backup';
+  return 'Scan';
+}
+
+function jobNotice(record: JobRecord): string {
+  const result = record.result ?? {};
+  if (typeof result.detail === 'string') return result.detail;
+  if (result.rotated === true) return result.applied ? 'Password applied and stored' : 'Password stored';
+  if (typeof result.backupId === 'string') return 'Backup catalog written';
+  if (Array.isArray(result.databases)) return `${result.databases.length} databases discovered`;
+  if (result.valid === true) return 'Configuration valid';
+  if (typeof result.connections === 'number') return `${result.connections} connections`;
+  return 'Completed';
 }
 
 export function ClustersPage({ role }: { role: string }) {
@@ -618,6 +697,7 @@ function EngineForm({
       databaseName: String(data.get('databaseName') ?? ''),
       username: String(data.get('username') ?? ''),
       password: String(data.get('password') ?? ''),
+      serviceUnit: String(data.get('serviceUnit') ?? ''),
     });
   }
   return (
@@ -646,6 +726,9 @@ function EngineForm({
       </Field>
       <Field label="Password">
         <input name="password" type="password" className={inputClass} />
+      </Field>
+      <Field label="Service unit">
+        <input name="serviceUnit" placeholder="postgresql" className={inputClass} />
       </Field>
       {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
       <button disabled={pending} className="h-11 w-full bg-primary text-sm font-semibold text-primary-foreground">

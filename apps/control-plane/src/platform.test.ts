@@ -196,4 +196,46 @@ describe('platform operations', () => {
     expect(exported.text).toContain('secret.rotate');
     expect(exported.text).not.toContain('new-password');
   });
+
+  it('lets operators disable alert rules and policies', async () => {
+    const ops = await token();
+    const admin = await token('admin', 'admin-pass-1');
+    const created = await request(app())
+      .post('/api/v1/alerts/rules')
+      .set('Authorization', `Bearer ${ops}`)
+      .send({ name: 'Quiet lag', kind: 'replication_lag', threshold: 1 });
+    expect(created.status).toBe(201);
+    const disabled = await request(app())
+      .patch(`/api/v1/alerts/rules/${created.body.data.id}`)
+      .set('Authorization', `Bearer ${ops}`)
+      .send({ enabled: false });
+    expect(disabled.status).toBe(200);
+    expect(disabled.body.data.enabled).toBe(false);
+    const invalid = await request(app())
+      .patch(`/api/v1/alerts/rules/${created.body.data.id}`)
+      .set('Authorization', `Bearer ${ops}`)
+      .send({ enabled: 'no' });
+    expect(invalid.status).toBe(400);
+
+    const policy = await request(app())
+      .post('/api/v1/policies')
+      .set('Authorization', `Bearer ${admin}`)
+      .send({ name: 'Cap superusers', kind: 'limit_superusers', threshold: 2 });
+    expect(policy.status).toBe(201);
+    const off = await request(app())
+      .patch(`/api/v1/policies/${policy.body.data.id}`)
+      .set('Authorization', `Bearer ${admin}`)
+      .send({ enabled: false });
+    expect(off.status).toBe(200);
+    expect(off.body.data.enabled).toBe(false);
+    const denied = await request(app())
+      .patch(`/api/v1/policies/${policy.body.data.id}`)
+      .set('Authorization', `Bearer ${ops}`)
+      .send({ enabled: true });
+    expect(denied.status).toBe(403);
+
+    const violations = await request(app()).get('/api/v1/policies/violations').set('Authorization', `Bearer ${ops}`);
+    expect(violations.status).toBe(200);
+    expect(Array.isArray(violations.body.data)).toBe(true);
+  });
 });

@@ -3,6 +3,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './api';
 import { useEnvironment } from './env';
 
+interface AlertRule {
+  id: string;
+  name: string;
+  kind: string;
+  threshold: number;
+  enabled: boolean;
+}
+
 interface AlertEvent {
   id: string;
   ruleName: string;
@@ -43,6 +51,14 @@ interface StreamEvent {
   createdAt: string;
 }
 
+interface PolicyRecord {
+  id: string;
+  name: string;
+  kind: string;
+  threshold: number | null;
+  enabled: boolean;
+}
+
 interface ServiceAccount {
   id: string;
   name: string;
@@ -50,10 +66,31 @@ interface ServiceAccount {
   environmentId: string | null;
 }
 
-export function AlertsPage() {
-  const rules = useQuery({ queryKey: ['alert-rules'], queryFn: () => api<Array<{ id: string; name: string; kind: string; threshold: number }>>('/api/v1/alerts/rules') });
+function canWrite(role: string): boolean {
+  return role === 'admin' || role === 'moderator';
+}
+
+export function AlertsPage({ role }: { role: string }) {
+  const queryClient = useQueryClient();
+  const rules = useQuery({ queryKey: ['alert-rules'], queryFn: () => api<AlertRule[]>('/api/v1/alerts/rules') });
   const alerts = useQuery({ queryKey: ['alerts'], queryFn: () => api<AlertEvent[]>('/api/v1/alerts') });
+  const [error, setError] = useState('');
   const firing = alerts.data?.filter((alert) => alert.status === 'firing') ?? [];
+  const create = useMutation({
+    mutationFn: (body: { name: string; kind: string; threshold: number }) => api('/api/v1/alerts/rules', { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: async () => {
+      setError('');
+      await queryClient.invalidateQueries({ queryKey: ['alert-rules'] });
+    },
+    onError: (err: Error) => setError(err.message),
+  });
+  const toggle = useMutation({
+    mutationFn: (rule: AlertRule) => api(`/api/v1/alerts/rules/${rule.id}`, { method: 'PATCH', body: JSON.stringify({ enabled: !rule.enabled }) }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['alert-rules'] });
+    },
+    onError: (err: Error) => setError(err.message),
+  });
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Panel title="Firing">
@@ -70,24 +107,78 @@ export function AlertsPage() {
       <Panel title="Rules">
         <ul className="divide-y divide-border text-sm">
           {rules.data?.map((rule) => (
-            <li key={rule.id} className="flex items-center justify-between py-3">
-              <span>{rule.name}</span>
-              <span className="font-mono text-xs text-muted-foreground">
-                {rule.kind} · {rule.threshold}
+            <li key={rule.id} className="flex items-center justify-between gap-3 py-3">
+              <span className={rule.enabled ? '' : 'text-muted-foreground'}>{rule.name}</span>
+              <span className="flex items-center gap-2">
+                <span className="font-mono text-xs text-muted-foreground">
+                  {rule.kind} · {rule.threshold}
+                </span>
+                {canWrite(role) && (
+                  <button
+                    className="border border-foreground/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
+                    onClick={() => toggle.mutate(rule)}
+                  >
+                    {rule.enabled ? 'Disable' : 'Enable'}
+                  </button>
+                )}
               </span>
             </li>
           ))}
         </ul>
+        {canWrite(role) && (
+          <form
+            className="mt-4 flex flex-wrap gap-2"
+            onSubmit={(event: FormEvent<HTMLFormElement>) => {
+              event.preventDefault();
+              const data = new FormData(event.currentTarget);
+              setError('');
+              create.mutate({
+                name: String(data.get('name') ?? ''),
+                kind: String(data.get('kind') ?? 'connections'),
+                threshold: Number(data.get('threshold') ?? 0),
+              });
+              event.currentTarget.reset();
+            }}
+          >
+            <input name="name" required placeholder="Name" className="h-10 border border-input bg-background px-3 text-sm" />
+            <select name="kind" className="h-10 border border-input bg-background px-2 text-sm" defaultValue="connections">
+              <option value="availability">availability</option>
+              <option value="connections">connections</option>
+              <option value="replication_lag">replication_lag</option>
+              <option value="backup_age">backup_age</option>
+            </select>
+            <input name="threshold" type="number" min={0} required placeholder="Threshold" className="h-10 w-28 border border-input bg-background px-3 text-sm" />
+            <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground">Add rule</button>
+          </form>
+        )}
+        {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
       </Panel>
     </div>
   );
 }
 
-export function BackupsPage() {
+export function BackupsPage({ role }: { role: string }) {
+  const queryClient = useQueryClient();
   const backups = useQuery({ queryKey: ['backups'], queryFn: () => api<BackupRecord[]>('/api/v1/backups') });
+  const [notice, setNotice] = useState('');
+  const verify = useMutation({
+    mutationFn: (backup: BackupRecord) =>
+      api<{ result: { verified?: boolean; restored?: boolean } | null }>('/api/v1/jobs', {
+        method: 'POST',
+        body: JSON.stringify({ type: 'engine.restore', engineId: backup.engineId, backupId: backup.id }),
+      }),
+    onSuccess: async (job) => {
+      const verified = job.result?.verified === true;
+      const restored = job.result?.restored === true;
+      setNotice(verified && !restored ? 'Catalog verified. Data files were not replayed.' : 'Restore job finished.');
+      await queryClient.invalidateQueries({ queryKey: ['jobs'] });
+    },
+    onError: (err: Error) => setNotice(err.message),
+  });
   return (
     <Panel title="Catalog backups">
-      <p className="mb-3 text-sm text-muted-foreground">Each backup is a manifest of databases and sizes. Restore verifies that manifest before any data files are touched.</p>
+      <p className="mb-3 text-sm text-muted-foreground">Each backup is a manifest of databases and sizes. Verify checks that manifest. It does not replay data files.</p>
+      {notice && <p className="mb-3 text-sm text-muted-foreground">{notice}</p>}
       <table className="w-full text-sm">
         <tbody>
           {backups.data?.map((backup) => (
@@ -95,6 +186,17 @@ export function BackupsPage() {
               <td className="py-3 font-mono text-xs">{backup.createdAt.replace('T', ' ').slice(0, 19)}</td>
               <td>{backup.format}</td>
               <td className="uppercase tracking-[0.14em]">{backup.status}</td>
+              <td className="text-right">
+                {canWrite(role) && backup.status === 'succeeded' && (
+                  <button
+                    className="border border-foreground/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
+                    onClick={() => verify.mutate(backup)}
+                    disabled={verify.isPending}
+                  >
+                    Verify
+                  </button>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -104,25 +206,93 @@ export function BackupsPage() {
   );
 }
 
-export function FindingsPage() {
+export function FindingsPage({ role }: { role: string }) {
+  const queryClient = useQueryClient();
   const findings = useQuery({ queryKey: ['findings'], queryFn: () => api<Finding[]>('/api/v1/findings') });
+  const policies = useQuery({ queryKey: ['policies'], queryFn: () => api<PolicyRecord[]>('/api/v1/policies') });
   const violations = useQuery({
     queryKey: ['violations'],
-    queryFn: () => api<Array<{ policyName: string; detail: string; engineId: string }>>('/api/v1/policies/evaluate', { method: 'POST' }),
+    queryFn: () => api<Array<{ policyName: string; detail: string; engineId: string }>>('/api/v1/policies/violations'),
+  });
+  const [error, setError] = useState('');
+  const create = useMutation({
+    mutationFn: (body: { name: string; kind: string; threshold: number | null }) => api('/api/v1/policies', { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: async () => {
+      setError('');
+      await queryClient.invalidateQueries({ queryKey: ['policies'] });
+      await queryClient.invalidateQueries({ queryKey: ['violations'] });
+    },
+    onError: (err: Error) => setError(err.message),
+  });
+  const toggle = useMutation({
+    mutationFn: (policy: PolicyRecord) => api(`/api/v1/policies/${policy.id}`, { method: 'PATCH', body: JSON.stringify({ enabled: !policy.enabled }) }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['policies'] });
+      await queryClient.invalidateQueries({ queryKey: ['violations'] });
+    },
+    onError: (err: Error) => setError(err.message),
   });
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <Panel title="Policy violations">
-        {violations.data?.length === 0 && <Empty label="No policy violations." />}
-        <ul className="divide-y divide-border text-sm">
-          {violations.data?.map((item, index) => (
-            <li key={`${item.engineId}-${index}`} className="py-3">
-              <div className="font-medium">{item.policyName}</div>
-              <div className="text-muted-foreground">{item.detail}</div>
-            </li>
-          ))}
-        </ul>
-      </Panel>
+      <div className="space-y-4">
+        <Panel title="Policy violations">
+          {violations.data?.length === 0 && <Empty label="No policy violations." />}
+          <ul className="divide-y divide-border text-sm">
+            {violations.data?.map((item, index) => (
+              <li key={`${item.engineId}-${index}`} className="py-3">
+                <div className="font-medium">{item.policyName}</div>
+                <div className="text-muted-foreground">{item.detail}</div>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+        <Panel title="Policies">
+          <ul className="divide-y divide-border text-sm">
+            {policies.data?.map((policy) => (
+              <li key={policy.id} className="flex items-center justify-between gap-3 py-3">
+                <span className={policy.enabled ? '' : 'text-muted-foreground'}>{policy.name}</span>
+                <span className="flex items-center gap-2">
+                  <span className="font-mono text-xs text-muted-foreground">{policy.kind}</span>
+                  {role === 'admin' && (
+                    <button
+                      className="border border-foreground/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
+                      onClick={() => toggle.mutate(policy)}
+                    >
+                      {policy.enabled ? 'Disable' : 'Enable'}
+                    </button>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {role === 'admin' && (
+            <form
+              className="mt-4 flex flex-wrap gap-2"
+              onSubmit={(event: FormEvent<HTMLFormElement>) => {
+                event.preventDefault();
+                const data = new FormData(event.currentTarget);
+                const threshold = String(data.get('threshold') ?? '');
+                setError('');
+                create.mutate({
+                  name: String(data.get('name') ?? ''),
+                  kind: String(data.get('kind') ?? 'require_ssl'),
+                  threshold: threshold === '' ? null : Number(threshold),
+                });
+                event.currentTarget.reset();
+              }}
+            >
+              <input name="name" required placeholder="Name" className="h-10 border border-input bg-background px-3 text-sm" />
+              <select name="kind" className="h-10 border border-input bg-background px-2 text-sm" defaultValue="require_ssl">
+                <option value="require_ssl">require_ssl</option>
+                <option value="limit_superusers">limit_superusers</option>
+              </select>
+              <input name="threshold" type="number" min={0} placeholder="Threshold" className="h-10 w-28 border border-input bg-background px-3 text-sm" />
+              <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground">Add policy</button>
+            </form>
+          )}
+          {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
+        </Panel>
+      </div>
       <Panel title="Latest checks">
         {findings.data?.length === 0 && <Empty label="Run a hardening scan from an engine." />}
         <ul className="divide-y divide-border text-sm">
@@ -138,8 +308,19 @@ export function FindingsPage() {
   );
 }
 
-export function EventsPage() {
+export function EventsPage({ role }: { role: string }) {
+  const queryClient = useQueryClient();
   const events = useQuery({ queryKey: ['events'], queryFn: () => api<StreamEvent[]>('/api/v1/events') });
+  const [error, setError] = useState('');
+  const create = useMutation({
+    mutationFn: (body: { source: string; severity: string; message: string; resourceType: string }) =>
+      api('/api/v1/events', { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: async () => {
+      setError('');
+      await queryClient.invalidateQueries({ queryKey: ['events'] });
+    },
+    onError: (err: Error) => setError(err.message),
+  });
   return (
     <Panel title="Event stream">
       <ul className="divide-y divide-border text-sm">
@@ -153,7 +334,34 @@ export function EventsPage() {
           </li>
         ))}
       </ul>
-      {events.data?.length === 0 && <Empty label="Jobs and external adapters will land here." />}
+      {events.data?.length === 0 && <Empty label="Jobs and recorded events land here." />}
+      {canWrite(role) && (
+        <form
+          className="mt-4 flex flex-wrap gap-2"
+          onSubmit={(event: FormEvent<HTMLFormElement>) => {
+            event.preventDefault();
+            const data = new FormData(event.currentTarget);
+            setError('');
+            create.mutate({
+              source: String(data.get('source') ?? ''),
+              severity: String(data.get('severity') ?? 'info'),
+              message: String(data.get('message') ?? ''),
+              resourceType: 'operator',
+            });
+            event.currentTarget.reset();
+          }}
+        >
+          <input name="source" required placeholder="Source" className="h-10 border border-input bg-background px-3 text-sm" />
+          <select name="severity" className="h-10 border border-input bg-background px-2 text-sm" defaultValue="info">
+            <option value="info">info</option>
+            <option value="warning">warning</option>
+            <option value="critical">critical</option>
+          </select>
+          <input name="message" required placeholder="Message" className="h-10 min-w-48 flex-1 border border-input bg-background px-3 text-sm" />
+          <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground">Record</button>
+        </form>
+      )}
+      {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
     </Panel>
   );
 }
@@ -228,6 +436,13 @@ export function AccountsPage() {
   const accounts = useQuery({ queryKey: ['service-accounts'], queryFn: () => api<ServiceAccount[]>('/api/v1/service-accounts') });
   const [token, setToken] = useState('');
   const [error, setError] = useState('');
+  const remove = useMutation({
+    mutationFn: (id: string) => api(`/api/v1/service-accounts/${id}`, { method: 'DELETE' }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['service-accounts'] });
+    },
+    onError: (err: Error) => setError(err.message),
+  });
   const create = useMutation({
     mutationFn: (body: { name: string; role: string; environmentId: string }) =>
       api<ServiceAccount & { token: string }>('/api/v1/service-accounts', { method: 'POST', body: JSON.stringify(body) }),
@@ -242,9 +457,17 @@ export function AccountsPage() {
       <Panel title="Service accounts">
         <ul className="divide-y divide-border text-sm">
           {accounts.data?.map((account) => (
-            <li key={account.id} className="flex justify-between py-3">
+            <li key={account.id} className="flex justify-between gap-3 py-3">
               <span className="font-medium">{account.name}</span>
-              <span className="uppercase tracking-[0.14em] text-muted-foreground">{account.role}</span>
+              <span className="flex items-center gap-2">
+                <span className="uppercase tracking-[0.14em] text-muted-foreground">{account.role}</span>
+                <button
+                  className="border border-foreground/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
+                  onClick={() => remove.mutate(account.id)}
+                >
+                  Delete
+                </button>
+              </span>
             </li>
           ))}
         </ul>
