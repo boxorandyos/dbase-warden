@@ -44,6 +44,7 @@ const sections = [
       { path: '/service-accounts', label: 'Service Accounts', icon: Users },
       { path: '/findings', label: 'Hardening', icon: ShieldCheck },
       { path: '/connectors', label: 'Connectors', icon: Cable },
+      { path: '/maintenance', label: 'Maintenance', icon: Server },
     ],
   },
 ] as const;
@@ -62,6 +63,7 @@ const titles: Record<string, string> = {
   backups: 'Backups',
   runbooks: 'Runbooks',
   findings: 'Hardening',
+  maintenance: 'Maintenance',
   environments: 'Environments',
   'service-accounts': 'Service Accounts',
 };
@@ -82,7 +84,7 @@ export function Shell({ user, children }: { user: ApiUser; children: ReactNode }
     window.location.assign('/login');
   }
 
-  const adminOnly = new Set(user.role === 'admin' ? [] : ['/users', '/service-accounts']);
+  const adminOnly = new Set(user.role === 'admin' ? [] : ['/users', '/service-accounts', '/maintenance']);
   const links = (
     <nav className="flex flex-col gap-1 md:flex-row md:items-center md:gap-1">
       {sections.map((section) =>

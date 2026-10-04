@@ -34,6 +34,12 @@ void registry.initAll().then(() => {
     webDist: process.env.WEB_DIST,
     backupDir: process.env.DBASE_BACKUP_DIR || path.join(path.dirname(dbPath === ':memory:' ? './data/dbase.sqlite' : dbPath), 'backups'),
     processController: process.env.DBASE_ALLOW_PROCESS_CONTROL === '1' ? systemProcessController() : plannedProcessController(),
+    maintenance: {
+      allowHostUpdate: process.env.DBASE_ALLOW_HOST_UPDATE === '1',
+      nodeRole: process.env.DBASE_NODE_ROLE === 'slave' ? 'slave' : 'master',
+      maintenanceKey: process.env.DBASE_MAINTENANCE_KEY,
+      root: process.env.DBASE_ROOT || path.resolve(process.cwd(), '..', '..'),
+    },
   });
   const server = app.listen(port, host, () => {
     console.log(`Dbase Warden control plane listening on ${host}:${port}`);

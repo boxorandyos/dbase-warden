@@ -628,6 +628,60 @@ export class Catalog {
     return violations;
   }
 
+  listWardenNodes(): Array<{ id: string; name: string; host: string; port: number; createdAt: string }> {
+    const rows = this.db.prepare('SELECT id, name, host, port, created_at FROM warden_nodes ORDER BY name').all() as Array<{
+      id: string;
+      name: string;
+      host: string;
+      port: number;
+      created_at: string;
+    }>;
+    return rows.map((row) => ({ id: row.id, name: row.name, host: row.host, port: row.port, createdAt: row.created_at }));
+  }
+
+  createWardenNode(input: { name: string; host: string; port?: number }): {
+    id: string;
+    name: string;
+    host: string;
+    port: number;
+    token: string;
+    createdAt: string;
+  } {
+    const name = requiredName(input.name, 'name');
+    const host = input.host?.trim() ?? '';
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(host)) throw new AppError(400, 'host is invalid');
+    const port = input.port ?? 3101;
+    if (!Number.isInteger(port) || port < 1 || port > 65535) throw new AppError(400, 'port is invalid');
+    if (this.db.prepare('SELECT id FROM warden_nodes WHERE name = ?').get(name)) throw new AppError(409, 'Node name already exists');
+    const record = {
+      id: id(),
+      name,
+      host,
+      port,
+      token: `dw_${randomBytes(24).toString('hex')}`,
+      createdAt: now(),
+    };
+    this.db
+      .prepare('INSERT INTO warden_nodes (id, name, host, port, token, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(record.id, record.name, record.host, record.port, record.token, record.createdAt);
+    return record;
+  }
+
+  deleteWardenNode(nodeId: string): void {
+    const result = this.db.prepare('DELETE FROM warden_nodes WHERE id = ?').run(nodeId);
+    if (result.changes === 0) throw new AppError(404, 'Node not found');
+  }
+
+  wardenNodesForUpgrade(nodeId?: string): Array<{ id: string; name: string; host: string; port: number; token: string }> {
+    const rows = (
+      nodeId
+        ? this.db.prepare('SELECT id, name, host, port, token FROM warden_nodes WHERE id = ?').all(nodeId)
+        : this.db.prepare('SELECT id, name, host, port, token FROM warden_nodes ORDER BY name').all()
+    ) as Array<{ id: string; name: string; host: string; port: number; token: string }>;
+    if (nodeId && rows.length === 0) throw new AppError(404, 'Node not found');
+    return rows;
+  }
+
   exportAudit(format: 'json' | 'csv'): string {
     const rows = this.db.prepare('SELECT * FROM audit_log ORDER BY created_at').all() as Array<{
       id: string;

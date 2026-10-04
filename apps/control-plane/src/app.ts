@@ -6,6 +6,13 @@ import type { ConnectorRegistry } from '@dbase-warden/engines';
 import { authenticate, authorize, signAccessToken } from './auth';
 import { AppError } from './errors';
 import { isEngineJobType, plannedProcessController, runEngineJob, type OperationDeps, type ProcessController } from './operations';
+import {
+  maintenanceKeyMatches,
+  parseMaintenanceKind,
+  scheduleMaintenance,
+  triggerSlaveUpgrades,
+  type MaintenanceKind,
+} from './maintenance';
 import type { Role, Store } from './store';
 
 export interface AppOptions {
@@ -16,6 +23,14 @@ export interface AppOptions {
   webDist?: string;
   backupDir?: string;
   processController?: ProcessController;
+  maintenance?: {
+    allowHostUpdate?: boolean;
+    nodeRole?: 'master' | 'slave';
+    maintenanceKey?: string;
+    root?: string;
+    fetch?: typeof fetch;
+    schedule?: (kind: MaintenanceKind) => Promise<{ executed: boolean; detail: string }>;
+  };
 }
 
 const writers: Role[] = ['admin', 'moderator'];
@@ -487,6 +502,94 @@ export function createApp(options: AppOptions): express.Express {
         resourceId: req.params.id,
       });
       res.json({ success: true, data: { id: req.params.id } });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  const maintenance = options.maintenance ?? {};
+  const nodeRole = maintenance.nodeRole ?? 'master';
+  const schedule =
+    maintenance.schedule ??
+    ((kind: MaintenanceKind) =>
+      scheduleMaintenance(maintenance.root ?? path.resolve(process.cwd(), '..', '..'), kind, Boolean(maintenance.allowHostUpdate)));
+
+  api.post('/v1/maintenance/apply', async (req, res, next) => {
+    try {
+      const presented = req.header('x-maintenance-key') ?? undefined;
+      if (!maintenanceKeyMatches(maintenance.maintenanceKey, presented)) {
+        throw new AppError(401, 'Invalid maintenance key');
+      }
+      const kind = parseMaintenanceKind(req.body?.kind);
+      const result = await schedule(kind);
+      res.status(202).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  api.post('/v1/maintenance/product', auth, authorize('admin'), async (req, res, next) => {
+    try {
+      const result = await schedule('product');
+      options.store.audit({ actor: req.user!.username, action: 'maintenance.product', resourceType: 'node', detail: result.detail });
+      res.status(202).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  api.post('/v1/maintenance/packages', auth, authorize('admin'), async (req, res, next) => {
+    try {
+      const result = await schedule('packages');
+      options.store.audit({ actor: req.user!.username, action: 'maintenance.packages', resourceType: 'node', detail: result.detail });
+      res.status(202).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  api.get('/v1/warden-nodes', auth, authorize('admin'), (_req, res) => {
+    res.json({ success: true, data: options.store.catalog.listWardenNodes() });
+  });
+
+  api.post('/v1/warden-nodes', auth, authorize('admin'), (req, res, next) => {
+    try {
+      const node = options.store.catalog.createWardenNode({
+        name: String(req.body?.name ?? ''),
+        host: String(req.body?.host ?? ''),
+        port: req.body?.port === undefined ? undefined : Number(req.body.port),
+      });
+      options.store.audit({ actor: req.user!.username, action: 'warden_node.create', resourceType: 'node', resourceId: node.id, detail: node.host });
+      res.status(201).json({ success: true, data: node });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  api.delete('/v1/warden-nodes/:id', auth, authorize('admin'), (req, res, next) => {
+    try {
+      options.store.catalog.deleteWardenNode(req.params.id);
+      options.store.audit({ actor: req.user!.username, action: 'warden_node.delete', resourceType: 'node', resourceId: req.params.id });
+      res.json({ success: true, data: { id: req.params.id } });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  api.post('/v1/maintenance/slaves', auth, authorize('admin'), async (req, res, next) => {
+    try {
+      if (nodeRole === 'slave') throw new AppError(403, 'Only the master can trigger slave upgrades');
+      const kind = parseMaintenanceKind(req.body?.kind ?? 'product');
+      const nodeId = req.body?.nodeId ? String(req.body.nodeId) : undefined;
+      const nodes = options.store.catalog.wardenNodesForUpgrade(nodeId);
+      const results = await triggerSlaveUpgrades(nodes, kind, nodeRole, maintenance.fetch);
+      options.store.audit({
+        actor: req.user!.username,
+        action: 'maintenance.slaves',
+        resourceType: 'node',
+        detail: `${kind}:${results.length}`,
+      });
+      res.json({ success: true, data: { kind, results } });
     } catch (error) {
       next(error);
     }

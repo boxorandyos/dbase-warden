@@ -7,7 +7,7 @@ import { Brand } from './chrome';
 import { EnvProvider } from './env';
 import { Shell } from './shell';
 import { AuditPage, ClustersPage, ConnectorsPage, DashboardPage, EnginesPage, JobsPage, ServersPage, UsersPage } from './pages';
-import { AccountsPage, AlertsPage, BackupsPage, EnvironmentsPage, EventsPage, FindingsPage, RunbooksPage } from './platform';
+import { AccountsPage, AlertsPage, BackupsPage, EnvironmentsPage, EventsPage, FindingsPage, MaintenancePage, RunbooksPage } from './platform';
 
 export function App() {
   const token = getToken();
@@ -58,6 +58,7 @@ export function App() {
           <Route path="/users" element={me.data.role === 'admin' ? <UsersPage role={me.data.role} /> : <Navigate to="/dashboard" replace />} />
           <Route path="/service-accounts" element={me.data.role === 'admin' ? <AccountsPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/findings" element={<FindingsPage role={me.data.role} />} />
+          <Route path="/maintenance" element={me.data.role === 'admin' ? <MaintenancePage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/connectors" element={<ConnectorsPage />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

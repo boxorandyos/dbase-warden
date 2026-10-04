@@ -300,6 +300,14 @@ export class Store {
         enabled INTEGER NOT NULL,
         environment_id TEXT
       );
+      CREATE TABLE IF NOT EXISTS warden_nodes (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        host TEXT NOT NULL,
+        port INTEGER NOT NULL,
+        token TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
     `);
     this.ensureColumn('servers', 'environment_id', 'TEXT');
     this.ensureColumn('engines', 'environment_id', 'TEXT');

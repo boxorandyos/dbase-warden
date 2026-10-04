@@ -129,6 +129,10 @@ These routes use the same envelope, roles, and `/api/v1` version.
 | `GET` | `/api/v1/secrets/:engineId` | admin. Versions only, never the secret |
 | `GET` | `/api/v1/audit/export?format=json\|csv` | any |
 
+`POST /api/v1/maintenance/product` and `POST /api/v1/maintenance/packages` are admin-only. They plan `scripts/update.sh` or `scripts/update-packages.sh` and run the script when `DBASE_ALLOW_HOST_UPDATE=1`. Package updates upgrade installed packages from a fixed list: `postgresql`, `postgresql-client`, `mysql-server`, `mariadb-server`, `ca-certificates`, `openssl`.
+
+`POST /api/v1/warden-nodes` registers a slave control plane. The response includes a `dw_` token once. The slave sets that value as `DBASE_MAINTENANCE_KEY` and `DBASE_NODE_ROLE=slave`. `POST /api/v1/maintenance/slaves` on a master calls each slave's `POST /api/v1/maintenance/apply` with `X-Maintenance-Key`.
+
 `POST /api/v1/jobs` accepts:
 
 `engine.health`, `engine.validate`, `engine.discover`, `engine.metrics`, `engine.backup`, `engine.restore`, `engine.harden`, `engine.control`, `engine.promote`, `server.sync`, `secret.rotate`.
