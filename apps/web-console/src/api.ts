@@ -13,6 +13,7 @@ export interface ServerRecord {
   hostname: string;
   sshPort: number;
   description: string;
+  environmentId: string | null;
 }
 
 export interface EngineRecord {
@@ -25,6 +26,8 @@ export interface EngineRecord {
   databaseName: string;
   username: string;
   credentialRef: string;
+  serviceUnit: string;
+  environmentId: string | null;
   version: string | null;
   lastHealth: { ok: boolean; at: string; role?: string; latencyMs?: number; error?: string } | null;
 }
@@ -34,6 +37,7 @@ export interface ClusterRecord {
   name: string;
   kind: string;
   description: string;
+  environmentId: string | null;
   members: Array<{ engineId: string; role: string; engineName: string }>;
 }
 

@@ -1,9 +1,10 @@
 import { ReactNode, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Activity, Cable, Database, LogOut, ScrollText, Server, Users, Waypoints } from 'lucide-react';
+import { Activity, Bell, BookOpen, Cable, Database, HardDrive, LogOut, ScrollText, Server, ShieldCheck, Users, Waypoints } from 'lucide-react';
 import type { ApiUser } from './api';
 import { setToken } from './api';
 import { Brand, MenuButton, MobileNav, ThemeIcon, useTheme } from './chrome';
+import { useEnvironment } from './env';
 
 const sections = [
   { id: 'pulse', label: 'Pulse', path: '/dashboard' },
@@ -14,6 +15,15 @@ const sections = [
       { path: '/servers', label: 'Servers', icon: Server },
       { path: '/engines', label: 'Engines', icon: Database },
       { path: '/clusters', label: 'Clusters', icon: Waypoints },
+      { path: '/environments', label: 'Environments', icon: Server },
+    ],
+  },
+  {
+    id: 'signals',
+    label: 'Signals',
+    items: [
+      { path: '/alerts', label: 'Alerts', icon: Bell },
+      { path: '/events', label: 'Events', icon: Activity },
     ],
   },
   {
@@ -21,6 +31,8 @@ const sections = [
     label: 'Operations',
     items: [
       { path: '/jobs', label: 'Jobs', icon: Activity },
+      { path: '/backups', label: 'Backups', icon: HardDrive },
+      { path: '/runbooks', label: 'Runbooks', icon: BookOpen },
       { path: '/audit', label: 'Audit', icon: ScrollText },
     ],
   },
@@ -29,6 +41,8 @@ const sections = [
     label: 'Fleet',
     items: [
       { path: '/users', label: 'User Management', icon: Users },
+      { path: '/service-accounts', label: 'Service Accounts', icon: Users },
+      { path: '/findings', label: 'Hardening', icon: ShieldCheck },
       { path: '/connectors', label: 'Connectors', icon: Cable },
     ],
   },
@@ -43,6 +57,13 @@ const titles: Record<string, string> = {
   audit: 'Audit',
   users: 'User Management',
   connectors: 'Connectors',
+  alerts: 'Alerts',
+  events: 'Events',
+  backups: 'Backups',
+  runbooks: 'Runbooks',
+  findings: 'Hardening',
+  environments: 'Environments',
+  'service-accounts': 'Service Accounts',
 };
 
 export function Shell({ user, children }: { user: ApiUser; children: ReactNode }) {
@@ -51,6 +72,7 @@ export function Shell({ user, children }: { user: ApiUser; children: ReactNode }
   const [dark, toggleTheme] = useTheme();
   const [mobile, setMobile] = useState(false);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const environment = useEnvironment();
   const segment = location.pathname.split('/').filter(Boolean)[0] ?? 'dashboard';
   const title = titles[segment] ?? 'Dbase';
 
@@ -125,6 +147,20 @@ export function Shell({ user, children }: { user: ApiUser; children: ReactNode }
           <Brand />
           <div className="ml-4 hidden md:block">{links}</div>
           <div className="ml-auto flex items-center gap-2">
+            {environment.environments.length > 0 && (
+              <select
+                aria-label="Environment"
+                className="h-10 border border-foreground/15 bg-background px-2 text-xs uppercase tracking-[0.14em]"
+                value={environment.id}
+                onChange={(event) => environment.setId(event.target.value)}
+              >
+                {environment.environments.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            )}
             <button className="border border-transparent p-2 text-muted-foreground hover:text-foreground" onClick={toggleTheme} aria-label="Toggle theme">
               <ThemeIcon dark={dark} />
             </button>

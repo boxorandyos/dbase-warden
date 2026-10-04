@@ -62,6 +62,25 @@ describe('PostgresConnector', () => {
     expect(discovered).toEqual({ version: '16.4', databases: ['app', 'postgres'] });
   });
 
+  it('builds a backup manifest and a scram finding', async () => {
+    const connector = new PostgresConnector(async () =>
+      session((sql) => {
+        if (sql.includes('pg_database_size(datname)::bigint AS size_bytes FROM pg_database WHERE datallowconn AND NOT datistemplate ORDER')) {
+          return { rows: [{ datname: 'app', size_bytes: 4096 }] };
+        }
+        if (sql.includes('SHOW ssl')) return { rows: [{ ssl: 'on' }] };
+        if (sql.includes('password_encryption')) return { rows: [{ password_encryption: 'md5' }] };
+        if (sql.includes('rolsuper')) return { rows: [{ superusers: 1 }] };
+        return { rows: [{ version: '16.4' }] };
+      }),
+    );
+    const manifest = await connector.backup({ host: 'db', port: 5432, username: 'warden' });
+    expect(manifest.databases).toEqual([{ name: 'app', sizeBytes: 4096 }]);
+    const findings = await connector.harden({ host: 'db', port: 5432, username: 'warden' });
+    expect(findings.find((finding) => finding.checkId === 'password_encryption')?.passed).toBe(false);
+    expect(findings.find((finding) => finding.checkId === 'ssl')?.passed).toBe(true);
+  });
+
   it('rejects an incomplete target without opening a session', async () => {
     const open = vi.fn();
     const connector = new PostgresConnector(open);

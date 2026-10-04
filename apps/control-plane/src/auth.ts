@@ -22,7 +22,7 @@ export function signAccessToken(user: PublicUser, secret: string): string {
   return jwt.sign(payload, secret, { expiresIn: '12h' });
 }
 
-export function authenticate(secret: string) {
+export function authenticate(secret: string, lookupServiceAccount?: (token: string) => PublicUser | null) {
   return (req: Request, _res: Response, next: NextFunction): void => {
     const header = req.header('authorization') ?? '';
     const match = header.match(/^Bearer\s+(.+)$/i);
@@ -30,9 +30,19 @@ export function authenticate(secret: string) {
       next(new AppError(401, 'Authentication required'));
       return;
     }
+    if (match[1].startsWith('dw_')) {
+      const account = lookupServiceAccount?.(match[1]) ?? null;
+      if (!account) {
+        next(new AppError(401, 'Invalid or expired token'));
+        return;
+      }
+      req.user = account;
+      next();
+      return;
+    }
     try {
       const decoded = jwt.verify(match[1], secret) as AuthToken;
-      req.user = { id: decoded.sub, username: decoded.username, role: decoded.role, createdAt: '' };
+      req.user = { id: decoded.sub, username: decoded.username, role: decoded.role, createdAt: '', environmentId: null };
       next();
     } catch {
       next(new AppError(401, 'Invalid or expired token'));

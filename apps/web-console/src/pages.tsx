@@ -1,26 +1,32 @@
 import { FormEvent, ReactNode, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, AuditRecord, ClusterRecord, ConnectorInfo, EngineRecord, JobRecord, ServerRecord } from './api';
+import { api, AuditRecord, ClusterRecord, ConnectorInfo, EngineRecord, getToken, JobRecord, ServerRecord } from './api';
 import { StatusDot } from './chrome';
+import { inEnvironment, useEnvironment } from './env';
 
 function canWrite(role: string): boolean {
   return role === 'admin' || role === 'moderator';
 }
 
 export function DashboardPage() {
+  const environment = useEnvironment();
   const servers = useQuery({ queryKey: ['servers'], queryFn: () => api<ServerRecord[]>('/api/v1/servers') });
   const engines = useQuery({ queryKey: ['engines'], queryFn: () => api<EngineRecord[]>('/api/v1/engines') });
   const jobs = useQuery({ queryKey: ['jobs'], queryFn: () => api<JobRecord[]>('/api/v1/jobs') });
+  const alerts = useQuery({ queryKey: ['alerts'], queryFn: () => api<Array<{ status: string }>>('/api/v1/alerts') });
   const connectors = useQuery({ queryKey: ['connectors'], queryFn: () => api<ConnectorInfo[]>('/api/v1/connectors') });
-  const healthy = engines.data?.filter((engine) => engine.lastHealth?.ok).length ?? 0;
+  const serverRows = inEnvironment(servers.data, environment.id);
+  const engineRows = inEnvironment(engines.data, environment.id);
+  const healthy = engineRows.filter((engine) => engine.lastHealth?.ok).length;
+  const firing = alerts.data?.filter((alert) => alert.status === 'firing').length ?? 0;
 
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-4">
-        <Stat label="Servers" value={servers.data?.length} />
-        <Stat label="Engines" value={engines.data?.length} />
+        <Stat label="Servers" value={servers.isSuccess ? serverRows.length : undefined} />
+        <Stat label="Engines" value={engines.isSuccess ? engineRows.length : undefined} />
         <Stat label="Healthy" value={engines.isSuccess ? healthy : undefined} />
-        <Stat label="Jobs" value={jobs.data?.length} />
+        <Stat label="Firing alerts" value={alerts.isSuccess ? firing : undefined} />
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Connectors">
@@ -43,13 +49,22 @@ export function DashboardPage() {
 
 export function ServersPage({ role }: { role: string }) {
   const queryClient = useQueryClient();
+  const environment = useEnvironment();
   const servers = useQuery({ queryKey: ['servers'], queryFn: () => api<ServerRecord[]>('/api/v1/servers') });
+  const rows = inEnvironment(servers.data, environment.id);
+  const sync = useMutation({
+    mutationFn: (serverId: string) => api(`/api/v1/jobs`, { method: 'POST', body: JSON.stringify({ type: 'server.sync', serverId }) }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['engines'] });
+      await queryClient.invalidateQueries({ queryKey: ['jobs'] });
+    },
+  });
   const [open, setOpen] = useState(false);
   const [error, setError] = useState('');
 
   const create = useMutation({
     mutationFn: (body: { name: string; hostname: string; description: string }) =>
-      api('/api/v1/servers', { method: 'POST', body: JSON.stringify(body) }),
+      api('/api/v1/servers', { method: 'POST', body: JSON.stringify({ ...body, environmentId: environment.id }) }),
     onSuccess: async () => {
       setOpen(false);
       await queryClient.invalidateQueries({ queryKey: ['servers'] });
@@ -71,17 +86,24 @@ export function ServersPage({ role }: { role: string }) {
             </tr>
           </thead>
           <tbody>
-            {servers.data?.map((server) => (
+            {rows.map((server) => (
               <tr key={server.id} className="border-t border-border">
                 <td className="py-3 font-medium">{server.name}</td>
                 <td className="font-mono text-xs">{server.hostname}</td>
                 <td>{server.sshPort}</td>
                 <td className="text-muted-foreground">{server.description}</td>
+                <td className="text-right">
+                  {canWrite(role) && (
+                    <button className="border border-foreground/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]" onClick={() => sync.mutate(server.id)}>
+                      Sync
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {servers.data?.length === 0 && <Empty label="No servers registered yet." />}
+        {rows.length === 0 && <Empty label="No servers registered yet." />}
       </Card>
       {open && (
         <Modal title="Register server" onClose={() => setOpen(false)}>
@@ -101,13 +123,16 @@ export function ServersPage({ role }: { role: string }) {
 
 export function EnginesPage({ role }: { role: string }) {
   const queryClient = useQueryClient();
+  const environment = useEnvironment();
   const engines = useQuery({ queryKey: ['engines'], queryFn: () => api<EngineRecord[]>('/api/v1/engines') });
+  const rows = inEnvironment(engines.data, environment.id);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState('');
   const [probeError, setProbeError] = useState('');
 
   const create = useMutation({
-    mutationFn: (body: Record<string, string | number>) => api('/api/v1/engines', { method: 'POST', body: JSON.stringify(body) }),
+    mutationFn: (body: Record<string, string | number>) =>
+      api('/api/v1/engines', { method: 'POST', body: JSON.stringify({ ...body, environmentId: environment.id }) }),
     onSuccess: async () => {
       setOpen(false);
       await queryClient.invalidateQueries({ queryKey: ['engines'] });
@@ -129,6 +154,21 @@ export function EnginesPage({ role }: { role: string }) {
     },
   });
 
+  const job = useMutation({
+    mutationFn: (body: { type: string; engineId: string }) => api(`/api/v1/jobs`, { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: async () => {
+      setProbeError('');
+      await queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      await queryClient.invalidateQueries({ queryKey: ['alerts'] });
+      await queryClient.invalidateQueries({ queryKey: ['backups'] });
+      await queryClient.invalidateQueries({ queryKey: ['findings'] });
+    },
+    onError: async (err: Error) => {
+      setProbeError(err.message);
+      await queryClient.invalidateQueries({ queryKey: ['jobs'] });
+    },
+  });
+
   return (
     <div className="space-y-4">
       <Toolbar title="Engine instances" action={canWrite(role) ? 'Add engine' : undefined} onAction={() => setOpen(true)} />
@@ -146,7 +186,7 @@ export function EnginesPage({ role }: { role: string }) {
             </tr>
           </thead>
           <tbody>
-            {engines.data?.map((engine) => (
+            {rows.map((engine) => (
               <tr key={engine.id} className="border-t border-border">
                 <td className="py-3 font-medium">{engine.name}</td>
                 <td className="capitalize">{engine.kind}</td>
@@ -162,20 +202,25 @@ export function EnginesPage({ role }: { role: string }) {
                 </td>
                 <td className="text-right">
                   {canWrite(role) && (
-                    <button
-                      className="border border-foreground/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
-                      onClick={() => probe.mutate(engine.id)}
-                      disabled={probe.isPending}
-                    >
-                      Probe
-                    </button>
+                    <div className="flex justify-end gap-1">
+                      {(['engine.health', 'engine.metrics', 'engine.backup', 'engine.harden'] as const).map((type) => (
+                        <button
+                          key={type}
+                          className="border border-foreground/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
+                          onClick={() => (type === 'engine.health' ? probe.mutate(engine.id) : job.mutate({ type, engineId: engine.id }))}
+                          disabled={probe.isPending || job.isPending}
+                        >
+                          {type === 'engine.health' ? 'Probe' : type === 'engine.metrics' ? 'Metrics' : type === 'engine.backup' ? 'Backup' : 'Scan'}
+                        </button>
+                      ))}
+                    </div>
                   )}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {engines.data?.length === 0 && <Empty label="No engine instances yet." />}
+        {rows.length === 0 && <Empty label="No engine instances yet." />}
       </Card>
       {open && (
         <Modal title="Add engine" onClose={() => setOpen(false)}>
@@ -195,13 +240,17 @@ export function EnginesPage({ role }: { role: string }) {
 
 export function ClustersPage({ role }: { role: string }) {
   const queryClient = useQueryClient();
+  const environment = useEnvironment();
   const clusters = useQuery({ queryKey: ['clusters'], queryFn: () => api<ClusterRecord[]>('/api/v1/clusters') });
   const engines = useQuery({ queryKey: ['engines'], queryFn: () => api<EngineRecord[]>('/api/v1/engines') });
+  const clusterRows = inEnvironment(clusters.data, environment.id);
+  const engineRows = inEnvironment(engines.data, environment.id);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState('');
 
   const create = useMutation({
-    mutationFn: (body: { name: string; kind: string }) => api('/api/v1/clusters', { method: 'POST', body: JSON.stringify(body) }),
+    mutationFn: (body: { name: string; kind: string }) =>
+      api('/api/v1/clusters', { method: 'POST', body: JSON.stringify({ ...body, environmentId: environment.id }) }),
     onSuccess: async () => {
       setOpen(false);
       await queryClient.invalidateQueries({ queryKey: ['clusters'] });
@@ -222,31 +271,51 @@ export function ClustersPage({ role }: { role: string }) {
     onError: (err: Error) => setError(err.message),
   });
 
+  const promote = useMutation({
+    mutationFn: (body: { clusterId: string; engineId: string }) =>
+      api('/api/v1/jobs', { method: 'POST', body: JSON.stringify({ type: 'engine.promote', ...body }) }),
+    onSuccess: async () => {
+      setError('');
+      await queryClient.invalidateQueries({ queryKey: ['clusters'] });
+    },
+    onError: (err: Error) => setError(err.message),
+  });
+
   return (
     <div className="space-y-4">
       <Toolbar title="Topologies" action={canWrite(role) ? 'Create cluster' : undefined} onAction={() => setOpen(true)} />
       {error && <p className="text-sm text-destructive">{error}</p>}
       <div className="grid gap-4">
-        {clusters.data?.map((cluster) => (
+        {clusterRows.map((cluster) => (
           <Card key={cluster.id} title={`${cluster.name} · ${cluster.kind}`}>
             <ul className="space-y-2 text-sm">
               {cluster.members.map((member) => (
-                <li key={member.engineId} className="flex justify-between border border-border px-3 py-2">
+                <li key={member.engineId} className="flex items-center justify-between gap-3 border border-border px-3 py-2">
                   <span>{member.engineName}</span>
-                  <span className="uppercase tracking-[0.14em] text-muted-foreground">{member.role}</span>
+                  <span className="flex items-center gap-2">
+                    <span className="uppercase tracking-[0.14em] text-muted-foreground">{member.role}</span>
+                    {canWrite(role) && member.role !== 'primary' && (
+                      <button
+                        className="border border-foreground/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
+                        onClick={() => promote.mutate({ clusterId: cluster.id, engineId: member.engineId })}
+                      >
+                        Promote
+                      </button>
+                    )}
+                  </span>
                 </li>
               ))}
               {cluster.members.length === 0 && <Empty label="No members yet." />}
             </ul>
             {canWrite(role) && (
               <MemberForm
-                engines={(engines.data ?? []).filter((engine) => engine.kind === cluster.kind)}
+                engines={engineRows.filter((engine) => engine.kind === cluster.kind)}
                 onSubmit={(engineId, memberRole) => addMember.mutate({ clusterId: cluster.id, engineId, role: memberRole })}
               />
             )}
           </Card>
         ))}
-        {clusters.data?.length === 0 && (
+        {clusterRows.length === 0 && (
           <Card>
             <Empty label="No clusters defined yet." />
           </Card>
@@ -280,7 +349,23 @@ export function JobsPage() {
 
 export function AuditPage() {
   const audit = useQuery({ queryKey: ['audit'], queryFn: () => api<AuditRecord[]>('/api/v1/audit') });
+  async function download() {
+    const response = await fetch('/api/v1/audit/export?format=csv', { headers: { Authorization: `Bearer ${getToken() ?? ''}` } });
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'dbase-audit.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  }
   return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <button className="h-10 border border-foreground/15 px-3 text-xs font-semibold uppercase tracking-[0.14em]" onClick={() => void download()}>
+          Export CSV
+        </button>
+      </div>
     <Card title="Audit log">
       <table className="w-full text-sm">
         <thead className="text-left text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
@@ -304,6 +389,7 @@ export function AuditPage() {
       </table>
       {audit.data?.length === 0 && <Empty label="No audit events yet." />}
     </Card>
+    </div>
   );
 }
 

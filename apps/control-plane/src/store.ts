@@ -3,6 +3,7 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import bcrypt from 'bcryptjs';
 import type { EngineKind } from '@dbase-warden/engines';
+import { Catalog } from './catalog';
 import { AppError } from './errors';
 
 export type Role = 'admin' | 'moderator' | 'viewer';
@@ -14,6 +15,7 @@ export interface PublicUser {
   username: string;
   role: Role;
   createdAt: string;
+  environmentId?: string | null;
 }
 
 export interface ServerRecord {
@@ -22,6 +24,7 @@ export interface ServerRecord {
   hostname: string;
   sshPort: number;
   description: string;
+  environmentId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -36,6 +39,8 @@ export interface EngineRecord {
   databaseName: string;
   username: string;
   credentialRef: string;
+  serviceUnit: string;
+  environmentId: string | null;
   version: string | null;
   lastHealth: {
     ok: boolean;
@@ -53,6 +58,7 @@ export interface ClusterRecord {
   name: string;
   kind: EngineKind;
   description: string;
+  environmentId: string | null;
   createdAt: string;
   members: Array<{ engineId: string; role: MemberRole; engineName: string }>;
 }
@@ -91,6 +97,8 @@ interface EngineRow {
   database_name: string;
   username: string;
   secret: string;
+  service_unit: string | null;
+  environment_id: string | null;
   version: string | null;
   last_health_ok: number | null;
   last_health_at: string | null;
@@ -116,7 +124,11 @@ export function credentialRef(engineId: string): string {
 }
 
 export class Store {
-  constructor(private readonly db: DatabaseSync) {}
+  readonly catalog: Catalog;
+
+  constructor(private readonly db: DatabaseSync) {
+    this.catalog = new Catalog(db);
+  }
 
   migrate(): void {
     this.db.exec(`
@@ -192,7 +204,115 @@ export class Store {
         detail TEXT NOT NULL,
         created_at TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS environments (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        description TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS service_accounts (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        role TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        environment_id TEXT,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS secret_versions (
+        id TEXT PRIMARY KEY,
+        engine_id TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        applied INTEGER NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS metric_samples (
+        id TEXT PRIMARY KEY,
+        engine_id TEXT NOT NULL,
+        collected_at TEXT NOT NULL,
+        ok INTEGER NOT NULL,
+        connections INTEGER,
+        max_connections INTEGER,
+        size_bytes INTEGER,
+        replication_lag_ms INTEGER,
+        role TEXT,
+        payload TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS alert_rules (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        threshold INTEGER NOT NULL,
+        enabled INTEGER NOT NULL,
+        environment_id TEXT
+      );
+      CREATE TABLE IF NOT EXISTS alert_events (
+        id TEXT PRIMARY KEY,
+        rule_id TEXT NOT NULL,
+        engine_id TEXT,
+        status TEXT NOT NULL,
+        message TEXT NOT NULL,
+        fired_at TEXT NOT NULL,
+        resolved_at TEXT
+      );
+      CREATE TABLE IF NOT EXISTS events (
+        id TEXT PRIMARY KEY,
+        source TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        message TEXT NOT NULL,
+        resource_type TEXT NOT NULL,
+        resource_id TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS backups (
+        id TEXT PRIMARY KEY,
+        engine_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        format TEXT NOT NULL,
+        artifact_path TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        finished_at TEXT,
+        error TEXT
+      );
+      CREATE TABLE IF NOT EXISTS findings (
+        id TEXT PRIMARY KEY,
+        engine_id TEXT NOT NULL,
+        check_id TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        passed INTEGER NOT NULL,
+        detail TEXT NOT NULL,
+        scanned_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS runbooks (
+        id TEXT PRIMARY KEY,
+        cluster_id TEXT,
+        environment_id TEXT,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS policies (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        threshold INTEGER,
+        enabled INTEGER NOT NULL,
+        environment_id TEXT
+      );
     `);
+    this.ensureColumn('servers', 'environment_id', 'TEXT');
+    this.ensureColumn('engines', 'environment_id', 'TEXT');
+    this.ensureColumn('engines', 'service_unit', "TEXT NOT NULL DEFAULT ''");
+    this.ensureColumn('clusters', 'environment_id', 'TEXT');
+    this.catalog.seed();
+  }
+
+  private ensureColumn(table: string, column: string, definition: string): void {
+    const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!columns.some((item) => item.name === column)) {
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    }
   }
 
   bootstrapAdmin(input: { username: string; password: string | undefined; allowDevDefault: boolean }): PublicUser | null {
@@ -291,17 +411,24 @@ export class Store {
     }
   }
 
-  listServers(): ServerRecord[] {
-    return (this.db.prepare('SELECT * FROM servers ORDER BY name').all() as Array<Record<string, unknown>>).map(mapServer);
+  listServers(environmentId?: string): ServerRecord[] {
+    const rows = (
+      environmentId
+        ? this.db.prepare('SELECT * FROM servers WHERE environment_id = ? ORDER BY name').all(environmentId)
+        : this.db.prepare('SELECT * FROM servers ORDER BY name').all()
+    ) as Array<Record<string, unknown>>;
+    return rows.map(mapServer);
   }
 
-  createServer(input: { name: string; hostname: string; sshPort?: number; description?: string }): ServerRecord {
+  createServer(input: { name: string; hostname: string; sshPort?: number; description?: string; environmentId?: string }): ServerRecord {
     const name = requiredText(input.name, 'name');
     const hostname = requiredText(input.hostname, 'hostname');
     const sshPort = input.sshPort ?? 22;
     if (!Number.isInteger(sshPort) || sshPort < 1 || sshPort > 65535) {
       throw new AppError(400, 'sshPort must be an integer between 1 and 65535');
     }
+    const environmentId = input.environmentId ?? this.catalog.defaultEnvironmentId();
+    this.catalog.requireEnvironment(environmentId);
     const timestamp = now();
     const record: ServerRecord = {
       id: id(),
@@ -309,14 +436,15 @@ export class Store {
       hostname,
       sshPort,
       description: input.description?.trim() ?? '',
+      environmentId,
       createdAt: timestamp,
       updatedAt: timestamp,
     };
     this.db
       .prepare(
-        'INSERT INTO servers (id, name, hostname, ssh_port, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO servers (id, name, hostname, ssh_port, description, environment_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       )
-      .run(record.id, record.name, record.hostname, record.sshPort, record.description, record.createdAt, record.updatedAt);
+      .run(record.id, record.name, record.hostname, record.sshPort, record.description, environmentId, record.createdAt, record.updatedAt);
     return record;
   }
 
@@ -328,8 +456,19 @@ export class Store {
     this.db.prepare('DELETE FROM servers WHERE id = ?').run(serverId);
   }
 
-  listEngines(): EngineRecord[] {
-    return (this.db.prepare('SELECT * FROM engines ORDER BY name').all() as unknown as EngineRow[]).map(mapEngine);
+  listEngines(environmentId?: string): EngineRecord[] {
+    const rows = (
+      environmentId
+        ? this.db.prepare('SELECT * FROM engines WHERE environment_id = ? ORDER BY name').all(environmentId)
+        : this.db.prepare('SELECT * FROM engines ORDER BY name').all()
+    ) as unknown as EngineRow[];
+    return rows.map(mapEngine);
+  }
+
+  listEnginesForServer(serverId: string): EngineRecord[] {
+    return (this.db.prepare('SELECT * FROM engines WHERE server_id = ? ORDER BY name').all(serverId) as unknown as EngineRow[]).map(
+      mapEngine,
+    );
   }
 
   getEngine(engineId: string): EngineRecord {
@@ -353,6 +492,8 @@ export class Store {
     username?: string;
     password?: string;
     serverId?: string | null;
+    serviceUnit?: string;
+    environmentId?: string;
   }): EngineRecord {
     const kind = parseKind(input.kind);
     const name = requiredText(input.name, 'name');
@@ -365,13 +506,19 @@ export class Store {
       const server = this.db.prepare('SELECT id FROM servers WHERE id = ?').get(input.serverId);
       if (!server) throw new AppError(400, 'serverId does not match a registered server');
     }
+    const environmentId = input.environmentId ?? this.catalog.defaultEnvironmentId();
+    this.catalog.requireEnvironment(environmentId);
+    const serviceUnit = input.serviceUnit?.trim() ?? '';
+    if (serviceUnit && !/^[A-Za-z0-9@._:-]+$/.test(serviceUnit)) {
+      throw new AppError(400, 'serviceUnit may contain only letters, numbers, and @ . _ : -');
+    }
     const timestamp = now();
     const engineId = id();
     this.db
       .prepare(
         `INSERT INTO engines (
-          id, server_id, name, kind, host, port, database_name, username, secret, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          id, server_id, name, kind, host, port, database_name, username, secret, service_unit, environment_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         engineId,
@@ -383,6 +530,8 @@ export class Store {
         input.databaseName?.trim() ?? '',
         input.username?.trim() ?? '',
         input.password ?? '',
+        serviceUnit,
+        environmentId,
         timestamp,
         timestamp,
       );
@@ -407,28 +556,53 @@ export class Store {
       );
   }
 
-  listClusters(): ClusterRecord[] {
-    const clusters = this.db.prepare('SELECT * FROM clusters ORDER BY name').all() as Array<{
+  setEngineSecret(engineId: string, password: string): void {
+    if (!this.db.prepare('SELECT id FROM engines WHERE id = ?').get(engineId)) throw new AppError(404, 'Engine not found');
+    this.db.prepare('UPDATE engines SET secret = ?, updated_at = ? WHERE id = ?').run(password, now(), engineId);
+  }
+
+  listClusters(environmentId?: string): ClusterRecord[] {
+    const clusters = (
+      environmentId
+        ? this.db.prepare('SELECT * FROM clusters WHERE environment_id = ? ORDER BY name').all(environmentId)
+        : this.db.prepare('SELECT * FROM clusters ORDER BY name').all()
+    ) as Array<{
       id: string;
       name: string;
       kind: EngineKind;
       description: string;
+      environment_id: string | null;
       created_at: string;
     }>;
     return clusters.map((cluster) => this.hydrateCluster(cluster));
   }
 
-  createCluster(input: { name: string; kind: string; description?: string }): ClusterRecord {
+  createCluster(input: { name: string; kind: string; description?: string; environmentId?: string }): ClusterRecord {
     const name = requiredText(input.name, 'name');
     const kind = parseKind(input.kind);
     const taken = this.db.prepare('SELECT id FROM clusters WHERE name = ?').get(name);
     if (taken) throw new AppError(409, 'Cluster name already exists');
+    const environmentId = input.environmentId ?? this.catalog.defaultEnvironmentId();
+    this.catalog.requireEnvironment(environmentId);
     const clusterId = id();
     const createdAt = now();
+    const description = input.description?.trim() ?? '';
     this.db
-      .prepare('INSERT INTO clusters (id, name, kind, description, created_at) VALUES (?, ?, ?, ?, ?)')
-      .run(clusterId, name, kind, input.description?.trim() ?? '', createdAt);
-    return { id: clusterId, name, kind, description: input.description?.trim() ?? '', createdAt, members: [] };
+      .prepare('INSERT INTO clusters (id, name, kind, description, environment_id, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(clusterId, name, kind, description, environmentId, createdAt);
+    return { id: clusterId, name, kind, description, environmentId, createdAt, members: [] };
+  }
+
+  promoteMember(clusterId: string, engineId: string): ClusterRecord {
+    const cluster = this.db.prepare('SELECT * FROM clusters WHERE id = ?').get(clusterId) as
+      | { id: string; name: string; kind: EngineKind; description: string; environment_id: string | null; created_at: string }
+      | undefined;
+    if (!cluster) throw new AppError(404, 'Cluster not found');
+    const member = this.db.prepare('SELECT engine_id FROM cluster_members WHERE cluster_id = ? AND engine_id = ?').get(clusterId, engineId);
+    if (!member) throw new AppError(404, 'Engine is not a member of this cluster');
+    this.db.prepare(`UPDATE cluster_members SET role = 'replica' WHERE cluster_id = ? AND role = 'primary'`).run(clusterId);
+    this.db.prepare(`UPDATE cluster_members SET role = 'primary' WHERE cluster_id = ? AND engine_id = ?`).run(clusterId, engineId);
+    return this.hydrateCluster(cluster);
   }
 
   addClusterMember(clusterId: string, engineId: string, role: string): ClusterRecord {
@@ -466,6 +640,7 @@ export class Store {
     name: string;
     kind: EngineKind;
     description: string;
+    environment_id?: string | null;
     created_at: string;
   }): ClusterRecord {
     const members = this.db
@@ -480,6 +655,7 @@ export class Store {
       name: cluster.name,
       kind: cluster.kind,
       description: cluster.description,
+      environmentId: cluster.environment_id ?? null,
       createdAt: cluster.created_at,
       members: members.map((member) => ({
         engineId: member.engine_id,
@@ -619,6 +795,7 @@ function mapServer(row: Record<string, unknown>): ServerRecord {
     hostname: String(row.hostname),
     sshPort: Number(row.ssh_port),
     description: String(row.description ?? ''),
+    environmentId: row.environment_id == null ? null : String(row.environment_id),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };
@@ -646,6 +823,8 @@ function mapEngine(row: EngineRow): EngineRecord {
     databaseName: row.database_name,
     username: row.username,
     credentialRef: credentialRef(row.id),
+    serviceUnit: row.service_unit ?? '',
+    environmentId: row.environment_id,
     version: row.version,
     lastHealth,
     createdAt: row.created_at,

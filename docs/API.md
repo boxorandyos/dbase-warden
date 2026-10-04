@@ -103,3 +103,31 @@ The phase 1 runner records `queued` → `running` → `succeeded` or `failed` an
 | 409 | Conflict (duplicate name, last admin, server still has engines) |
 | 422 | Job finished with a failed probe |
 | 500 | Unexpected failure |
+
+## Operations added after the foundation
+
+These routes use the same envelope, roles, and `/api/v1` version.
+
+| Method | Path | Roles |
+|--------|------|-------|
+| `GET` `POST` | `/api/v1/environments` | read: any, create: admin |
+| `GET` `POST` `DELETE` | `/api/v1/service-accounts` | admin. Create returns the `dw_` token once |
+| `GET` `POST` | `/api/v1/alerts/rules` | read: any, create: moderator, admin |
+| `GET` | `/api/v1/alerts` | any |
+| `GET` | `/api/v1/metrics/:engineId` | any |
+| `GET` `POST` | `/api/v1/events` | read: any, ingest: moderator, admin |
+| `GET` | `/api/v1/backups` | any |
+| `GET` | `/api/v1/findings` | any |
+| `GET` `POST` | `/api/v1/policies` | read: any, create: admin |
+| `POST` | `/api/v1/policies/evaluate` | any |
+| `GET` `POST` | `/api/v1/runbooks` | read: any, write: moderator, admin |
+| `GET` | `/api/v1/secrets/:engineId` | admin. Versions only, never the secret |
+| `GET` | `/api/v1/audit/export?format=json\|csv` | any |
+
+`POST /api/v1/jobs` accepts:
+
+`engine.health`, `engine.validate`, `engine.discover`, `engine.metrics`, `engine.backup`, `engine.restore`, `engine.harden`, `engine.control`, `engine.promote`, `server.sync`, `secret.rotate`.
+
+Inventory lists accept `environmentId`. A service account pinned to an environment cannot read another one.
+
+Backups are `dbase-manifest-v1` catalogs (database names and sizes). Restore verifies the catalog and does not replay data files. Start, stop, and restart record a `systemctl` plan unless `DBASE_ALLOW_PROCESS_CONTROL=1`. Password rotation stores a new `local://` version and, when `apply` is true, issues `ALTER ROLE` or `ALTER USER` through the connector.

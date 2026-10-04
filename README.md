@@ -66,4 +66,4 @@ pnpm build
 
 ## Current status
 
-Phase 1 is in place: versioned API, role checks, inventory, job and audit records, the connector lifecycle, a PostgreSQL health/discovery connector, and the first console views. MySQL and MariaDB plugins are registered and report that they are not implemented yet. The control plane stores its own state in SQLite, including engine passwords behind a `local://` credential reference. Swap that secret provider before production use.
+The control plane covers inventory, jobs, metrics, alerts, events, backups, hardening policies, service accounts, secret rotation, cluster promotion, runbooks, and environments. PostgreSQL, MySQL, and MariaDB connectors collect health, metrics, backup catalogs, and hardening checks. Engine passwords stay behind a `local://` credential reference. Backup artifacts are catalogs of database names and sizes. Process control plans a `systemctl` action and runs it only when `DBASE_ALLOW_PROCESS_CONTROL=1`.

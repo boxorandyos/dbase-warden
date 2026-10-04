@@ -52,8 +52,8 @@ describe('ConnectorRegistry', () => {
     const registry = createDefaultRegistry();
     expect(registry.describe()).toEqual([
       { kind: 'postgresql', implemented: true },
-      { kind: 'mysql', implemented: false },
-      { kind: 'mariadb', implemented: false },
+      { kind: 'mysql', implemented: true },
+      { kind: 'mariadb', implemented: true },
     ]);
     expect(() => registry.get('cockroach' as 'mysql')).toThrow(ConnectorError);
   });

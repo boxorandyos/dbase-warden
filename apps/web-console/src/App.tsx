@@ -4,8 +4,10 @@ import { useQuery } from '@tanstack/react-query';
 import { CheckCircle2 } from 'lucide-react';
 import { api, ApiUser, getToken, setToken } from './api';
 import { Brand } from './chrome';
+import { EnvProvider } from './env';
 import { Shell } from './shell';
 import { AuditPage, ClustersPage, ConnectorsPage, DashboardPage, EnginesPage, JobsPage, ServersPage, UsersPage } from './pages';
+import { AccountsPage, AlertsPage, BackupsPage, EnvironmentsPage, EventsPage, FindingsPage, RunbooksPage } from './platform';
 
 export function App() {
   const token = getToken();
@@ -38,20 +40,29 @@ export function App() {
   }
 
   return (
-    <Shell user={me.data}>
-      <Routes>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/servers" element={<ServersPage role={me.data.role} />} />
-        <Route path="/engines" element={<EnginesPage role={me.data.role} />} />
-        <Route path="/clusters" element={<ClustersPage role={me.data.role} />} />
-        <Route path="/jobs" element={<JobsPage />} />
-        <Route path="/audit" element={<AuditPage />} />
-        <Route path="/users" element={<UsersPage role={me.data.role} />} />
-        <Route path="/connectors" element={<ConnectorsPage />} />
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
-      </Routes>
-    </Shell>
+    <EnvProvider>
+      <Shell user={me.data}>
+        <Routes>
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/servers" element={<ServersPage role={me.data.role} />} />
+          <Route path="/engines" element={<EnginesPage role={me.data.role} />} />
+          <Route path="/clusters" element={<ClustersPage role={me.data.role} />} />
+          <Route path="/environments" element={<EnvironmentsPage role={me.data.role} />} />
+          <Route path="/alerts" element={<AlertsPage />} />
+          <Route path="/events" element={<EventsPage />} />
+          <Route path="/jobs" element={<JobsPage />} />
+          <Route path="/backups" element={<BackupsPage />} />
+          <Route path="/runbooks" element={<RunbooksPage role={me.data.role} />} />
+          <Route path="/audit" element={<AuditPage />} />
+          <Route path="/users" element={<UsersPage role={me.data.role} />} />
+          <Route path="/service-accounts" element={me.data.role === 'admin' ? <AccountsPage /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/findings" element={<FindingsPage />} />
+          <Route path="/connectors" element={<ConnectorsPage />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </Shell>
+    </EnvProvider>
   );
 }
 

@@ -1,5 +1,7 @@
+import path from 'node:path';
 import { createDefaultRegistry } from '@dbase-warden/engines';
 import { createApp } from './app';
+import { plannedProcessController, systemProcessController } from './operations';
 import { openStore } from './store';
 
 const port = Number(process.env.PORT || process.env.DBASE_API_PORT || 3101);
@@ -30,6 +32,8 @@ void registry.initAll().then(() => {
     jwtSecret: jwtSecret || 'dev-only-change-me',
     corsOrigin: process.env.CORS_ORIGIN,
     webDist: process.env.WEB_DIST,
+    backupDir: process.env.DBASE_BACKUP_DIR || path.join(path.dirname(dbPath === ':memory:' ? './data/dbase.sqlite' : dbPath), 'backups'),
+    processController: process.env.DBASE_ALLOW_PROCESS_CONTROL === '1' ? systemProcessController() : plannedProcessController(),
   });
   const server = app.listen(port, host, () => {
     console.log(`Dbase Warden control plane listening on ${host}:${port}`);

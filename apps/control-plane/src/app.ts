@@ -5,7 +5,7 @@ import helmet from 'helmet';
 import type { ConnectorRegistry } from '@dbase-warden/engines';
 import { authenticate, authorize, signAccessToken } from './auth';
 import { AppError } from './errors';
-import { isEngineJobType, runEngineJob } from './operations';
+import { isEngineJobType, plannedProcessController, runEngineJob, type OperationDeps, type ProcessController } from './operations';
 import type { Role, Store } from './store';
 
 export interface AppOptions {
@@ -14,6 +14,8 @@ export interface AppOptions {
   jwtSecret: string;
   corsOrigin?: string;
   webDist?: string;
+  backupDir?: string;
+  processController?: ProcessController;
 }
 
 const writers: Role[] = ['admin', 'moderator'];
@@ -26,7 +28,16 @@ export function createApp(options: AppOptions): express.Express {
   app.use(express.json({ limit: '1mb' }));
 
   const api = express.Router();
-  const auth = authenticate(options.jwtSecret);
+  const auth = authenticate(options.jwtSecret, (token) => options.store.catalog.findServiceAccount(token));
+  const deps: OperationDeps = {
+    backupDir: options.backupDir ?? path.join(process.cwd(), 'data', 'backups'),
+    processController: options.processController ?? plannedProcessController(),
+  };
+
+  const respondJob = (res: express.Response, job: { status: string; error: string | null }, created = false) => {
+    const ok = job.status === 'succeeded';
+    res.status(ok ? (created ? 201 : 200) : 422).json({ success: ok, message: job.error ?? undefined, data: job });
+  };
 
   api.get('/health', (_req, res) => {
     res.json({ success: true, message: 'API is running', timestamp: new Date().toISOString() });
@@ -63,13 +74,17 @@ export function createApp(options: AppOptions): express.Express {
     res.json({ success: true, data: req.user });
   });
 
-  api.get('/v1/servers', auth, (_req, res) => {
-    res.json({ success: true, data: options.store.listServers() });
+  api.get('/v1/servers', auth, (req, res, next) => {
+    try {
+      res.json({ success: true, data: options.store.listServers(environmentScope(req)) });
+    } catch (error) {
+      next(error);
+    }
   });
 
   api.post('/v1/servers', auth, authorize(...writers), (req, res, next) => {
     try {
-      const server = options.store.createServer(req.body ?? {});
+      const server = options.store.createServer({ ...(req.body ?? {}), environmentId: forcedEnvironment(req) });
       options.store.audit({
         actor: req.user!.username,
         action: 'server.create',
@@ -98,13 +113,17 @@ export function createApp(options: AppOptions): express.Express {
     }
   });
 
-  api.get('/v1/engines', auth, (_req, res) => {
-    res.json({ success: true, data: options.store.listEngines() });
+  api.get('/v1/engines', auth, (req, res, next) => {
+    try {
+      res.json({ success: true, data: options.store.listEngines(environmentScope(req)) });
+    } catch (error) {
+      next(error);
+    }
   });
 
   api.post('/v1/engines', auth, authorize(...writers), (req, res, next) => {
     try {
-      const engine = options.store.createEngine(req.body ?? {});
+      const engine = options.store.createEngine({ ...(req.body ?? {}), environmentId: forcedEnvironment(req) });
       options.store.audit({
         actor: req.user!.username,
         action: 'engine.create',
@@ -120,28 +139,29 @@ export function createApp(options: AppOptions): express.Express {
 
   api.post('/v1/engines/:id/health', auth, authorize(...writers), async (req, res, next) => {
     try {
-      const job = await runEngineJob(options.store, options.registry, {
-        type: 'engine.health',
-        engineId: req.params.id,
-        actor: req.user!.username,
-      });
-      res.status(job.status === 'succeeded' ? 200 : 422).json({
-        success: job.status === 'succeeded',
-        message: job.error ?? undefined,
-        data: job,
-      });
+      const job = await runEngineJob(
+        options.store,
+        options.registry,
+        { type: 'engine.health', engineId: req.params.id, actor: req.user!.username },
+        deps,
+      );
+      respondJob(res, job);
     } catch (error) {
       next(error);
     }
   });
 
-  api.get('/v1/clusters', auth, (_req, res) => {
-    res.json({ success: true, data: options.store.listClusters() });
+  api.get('/v1/clusters', auth, (req, res, next) => {
+    try {
+      res.json({ success: true, data: options.store.listClusters(environmentScope(req)) });
+    } catch (error) {
+      next(error);
+    }
   });
 
   api.post('/v1/clusters', auth, authorize(...writers), (req, res, next) => {
     try {
-      const cluster = options.store.createCluster(req.body ?? {});
+      const cluster = options.store.createCluster({ ...(req.body ?? {}), environmentId: forcedEnvironment(req) });
       options.store.audit({
         actor: req.user!.username,
         action: 'cluster.create',
@@ -198,18 +218,25 @@ export function createApp(options: AppOptions): express.Express {
     try {
       const type = String(req.body?.type ?? '');
       if (!isEngineJobType(type)) {
-        throw new AppError(400, 'type must be engine.health, engine.validate, or engine.discover');
+        throw new AppError(400, `type must be one of ${['engine.health', 'engine.validate', 'engine.discover', 'engine.metrics', 'engine.backup', 'engine.restore', 'engine.harden', 'engine.control', 'engine.promote', 'server.sync', 'secret.rotate'].join(', ')}`);
       }
-      const job = await runEngineJob(options.store, options.registry, {
-        type,
-        engineId: String(req.body?.engineId ?? ''),
-        actor: req.user!.username,
-      });
-      res.status(job.status === 'succeeded' ? 201 : 422).json({
-        success: job.status === 'succeeded',
-        message: job.error ?? undefined,
-        data: job,
-      });
+      const job = await runEngineJob(
+        options.store,
+        options.registry,
+        {
+          type,
+          engineId: req.body?.engineId ? String(req.body.engineId) : undefined,
+          serverId: req.body?.serverId ? String(req.body.serverId) : undefined,
+          clusterId: req.body?.clusterId ? String(req.body.clusterId) : undefined,
+          action: req.body?.action,
+          password: req.body?.password ? String(req.body.password) : undefined,
+          apply: Boolean(req.body?.apply),
+          backupId: req.body?.backupId ? String(req.body.backupId) : undefined,
+          actor: req.user!.username,
+        },
+        deps,
+      );
+      respondJob(res, job, true);
     } catch (error) {
       next(error);
     }
@@ -217,6 +244,141 @@ export function createApp(options: AppOptions): express.Express {
 
   api.get('/v1/audit', auth, (_req, res) => {
     res.json({ success: true, data: options.store.listAudit() });
+  });
+
+  api.get('/v1/audit/export', auth, (req, res) => {
+    const format = req.query.format === 'csv' ? 'csv' : 'json';
+    const body = options.store.catalog.exportAudit(format);
+    res.type(format === 'csv' ? 'text/csv' : 'application/json').send(body);
+  });
+
+  api.get('/v1/environments', auth, (_req, res) => {
+    res.json({ success: true, data: options.store.catalog.listEnvironments() });
+  });
+
+  api.post('/v1/environments', auth, authorize('admin'), (req, res, next) => {
+    try {
+      const environment = options.store.catalog.createEnvironment(req.body ?? {});
+      options.store.audit({ actor: req.user!.username, action: 'environment.create', resourceType: 'environment', resourceId: environment.id, detail: environment.name });
+      res.status(201).json({ success: true, data: environment });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  api.get('/v1/service-accounts', auth, authorize('admin'), (_req, res) => {
+    res.json({ success: true, data: options.store.catalog.listServiceAccounts() });
+  });
+
+  api.post('/v1/service-accounts', auth, authorize('admin'), (req, res, next) => {
+    try {
+      const account = options.store.catalog.createServiceAccount({
+        name: String(req.body?.name ?? ''),
+        role: req.body?.role,
+        environmentId: req.body?.environmentId ? String(req.body.environmentId) : null,
+      });
+      options.store.audit({ actor: req.user!.username, action: 'service_account.create', resourceType: 'service_account', resourceId: account.id, detail: account.role });
+      res.status(201).json({ success: true, data: account });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  api.delete('/v1/service-accounts/:id', auth, authorize('admin'), (req, res, next) => {
+    try {
+      options.store.catalog.deleteServiceAccount(req.params.id);
+      options.store.audit({ actor: req.user!.username, action: 'service_account.delete', resourceType: 'service_account', resourceId: req.params.id });
+      res.json({ success: true, data: { id: req.params.id } });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  api.get('/v1/alerts/rules', auth, (_req, res) => {
+    res.json({ success: true, data: options.store.catalog.listRules() });
+  });
+
+  api.post('/v1/alerts/rules', auth, authorize(...writers), (req, res, next) => {
+    try {
+      const rule = options.store.catalog.createRule({
+        name: String(req.body?.name ?? ''),
+        kind: String(req.body?.kind ?? ''),
+        threshold: Number(req.body?.threshold),
+      });
+      res.status(201).json({ success: true, data: rule });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  api.get('/v1/alerts', auth, (_req, res) => {
+    res.json({ success: true, data: options.store.catalog.listAlerts() });
+  });
+
+  api.get('/v1/metrics/:engineId', auth, (req, res) => {
+    res.json({ success: true, data: options.store.catalog.latestMetrics(req.params.engineId) });
+  });
+
+  api.get('/v1/events', auth, (_req, res) => {
+    res.json({ success: true, data: options.store.catalog.listEvents() });
+  });
+
+  api.post('/v1/events', auth, authorize(...writers), (req, res, next) => {
+    try {
+      const event = options.store.catalog.recordEvent({
+        source: String(req.body?.source ?? ''),
+        severity: req.body?.severity,
+        message: String(req.body?.message ?? ''),
+        resourceType: String(req.body?.resourceType ?? ''),
+        resourceId: req.body?.resourceId ? String(req.body.resourceId) : undefined,
+      });
+      res.status(201).json({ success: true, data: event });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  api.get('/v1/backups', auth, (_req, res) => {
+    res.json({ success: true, data: options.store.catalog.listBackups() });
+  });
+
+  api.get('/v1/findings', auth, (_req, res) => {
+    res.json({ success: true, data: options.store.catalog.listFindings() });
+  });
+
+  api.get('/v1/policies', auth, (_req, res) => {
+    res.json({ success: true, data: options.store.catalog.listPolicies() });
+  });
+
+  api.post('/v1/policies', auth, authorize('admin'), (req, res, next) => {
+    try {
+      const policy = options.store.catalog.createPolicy(req.body ?? {});
+      res.status(201).json({ success: true, data: policy });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  api.post('/v1/policies/evaluate', auth, (_req, res) => {
+    res.json({ success: true, data: options.store.catalog.evaluatePolicies() });
+  });
+
+  api.get('/v1/runbooks', auth, (_req, res) => {
+    res.json({ success: true, data: options.store.catalog.listRunbooks() });
+  });
+
+  api.post('/v1/runbooks', auth, authorize(...writers), (req, res, next) => {
+    try {
+      const runbook = options.store.catalog.saveRunbook(req.body ?? {});
+      options.store.audit({ actor: req.user!.username, action: 'runbook.save', resourceType: 'runbook', resourceId: runbook.id, detail: runbook.title });
+      res.status(201).json({ success: true, data: runbook });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  api.get('/v1/secrets/:engineId', auth, authorize('admin'), (req, res) => {
+    res.json({ success: true, data: options.store.catalog.listSecretVersions(req.params.engineId) });
   });
 
   api.get('/v1/users', auth, authorize('admin'), (_req, res) => {
@@ -308,4 +470,19 @@ export function createApp(options: AppOptions): express.Express {
   });
 
   return app;
+}
+
+function environmentScope(req: express.Request): string | undefined {
+  const requested = typeof req.query.environmentId === 'string' ? req.query.environmentId : undefined;
+  if (req.user?.environmentId) {
+    if (requested && requested !== req.user.environmentId) {
+      throw new AppError(403, 'Service account is scoped to another environment');
+    }
+    return req.user.environmentId;
+  }
+  return requested;
+}
+
+function forcedEnvironment(req: express.Request): string | undefined {
+  return req.user?.environmentId || (req.body?.environmentId ? String(req.body.environmentId) : undefined);
 }

@@ -1,7 +1,7 @@
 import type { EngineConnector, EngineKind } from './types';
 import { ConnectorError } from './types';
 import { PostgresConnector } from './postgres/connector';
-import { PlaceholderConnector } from './placeholder';
+import { MysqlConnector } from './mysql/connector';
 
 export interface ConnectorDescription {
   kind: EngineKind;
@@ -57,7 +57,7 @@ export class ConnectorRegistry {
 export function createDefaultRegistry(): ConnectorRegistry {
   const registry = new ConnectorRegistry();
   registry.register(new PostgresConnector());
-  registry.register(new PlaceholderConnector('mysql'));
-  registry.register(new PlaceholderConnector('mariadb'));
+  registry.register(new MysqlConnector('mysql'));
+  registry.register(new MysqlConnector('mariadb'));
   return registry;
 }
