@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { AppError } from './errors';
 import type { Role } from './store';
@@ -33,7 +33,7 @@ export interface MetricRecord {
 export interface AlertRule {
   id: string;
   name: string;
-  kind: 'availability' | 'connections' | 'replication_lag' | 'backup_age';
+  kind: 'availability' | 'connections' | 'replication_lag' | 'backup_age' | 'node_stale' | 'job_failed';
   threshold: number;
   enabled: boolean;
 }
@@ -109,7 +109,9 @@ export interface Observation {
   role?: string | null;
 }
 
-const RULE_KINDS = ['availability', 'connections', 'replication_lag', 'backup_age'] as const;
+const RULE_KINDS = ['availability', 'connections', 'replication_lag', 'backup_age', 'node_stale', 'job_failed'] as const;
+const POLICY_KINDS = ['require_ssl', 'limit_superusers', 'require_mfa', 'backup_max_age', 'node_heartbeat_max_age'] as const;
+const FLEET_RULES = new Set<AlertRule['kind']>(['node_stale', 'job_failed']);
 const ROLES: Role[] = ['admin', 'moderator', 'viewer'];
 
 function now(): string {
@@ -143,16 +145,35 @@ export class Catalog {
       );
       for (const [name, kind, threshold] of defaults) insert.run(id(), name, kind, threshold);
     }
+    this.ensureRule('Node heartbeat', 'node_stale', 120);
+    this.ensureRule('Failed jobs', 'job_failed', 0);
     const policies = this.db.prepare('SELECT COUNT(*) AS c FROM policies').get() as { c: number };
     if (policies.c === 0) {
       this.db
         .prepare('INSERT INTO policies (id, name, kind, threshold, enabled, environment_id) VALUES (?, ?, ?, ?, 1, NULL)')
         .run(id(), 'Require encrypted transport', 'require_ssl', null);
     }
+    this.ensurePolicy('Require MFA', 'require_mfa', null);
+    this.ensurePolicy('Backup maximum age', 'backup_max_age', 24);
+    this.ensurePolicy('Node heartbeat age', 'node_heartbeat_max_age', 120);
     const defaultId = this.defaultEnvironmentId();
     this.db.prepare('UPDATE servers SET environment_id = ? WHERE environment_id IS NULL').run(defaultId);
     this.db.prepare('UPDATE engines SET environment_id = ? WHERE environment_id IS NULL').run(defaultId);
     this.db.prepare('UPDATE clusters SET environment_id = ? WHERE environment_id IS NULL').run(defaultId);
+  }
+
+  private ensureRule(name: string, kind: AlertRule['kind'], threshold: number): void {
+    if (this.db.prepare('SELECT id FROM alert_rules WHERE kind = ?').get(kind)) return;
+    this.db
+      .prepare('INSERT INTO alert_rules (id, name, kind, threshold, enabled, environment_id) VALUES (?, ?, ?, ?, 1, NULL)')
+      .run(id(), name, kind, threshold);
+  }
+
+  private ensurePolicy(name: string, kind: string, threshold: number | null): void {
+    if (this.db.prepare('SELECT id FROM policies WHERE kind = ?').get(kind)) return;
+    this.db
+      .prepare('INSERT INTO policies (id, name, kind, threshold, enabled, environment_id) VALUES (?, ?, ?, ?, 1, NULL)')
+      .run(id(), name, kind, threshold);
   }
 
   defaultEnvironmentId(): string {
@@ -309,7 +330,7 @@ export class Catalog {
 
   createRule(input: { name: string; kind: string; threshold: number }): AlertRule {
     if (!RULE_KINDS.includes(input.kind as AlertRule['kind'])) {
-      throw new AppError(400, 'kind must be availability, connections, replication_lag, or backup_age');
+      throw new AppError(400, `kind must be ${RULE_KINDS.join(', ')}`);
     }
     if (!Number.isFinite(input.threshold) || input.threshold < 0) throw new AppError(400, 'threshold must be a positive number');
     const record: AlertRule = {
@@ -344,7 +365,7 @@ export class Catalog {
   }
 
   evaluateObservation(engineId: string, observation: Observation): AlertEvent[] {
-    const rules = this.listRules().filter((rule) => rule.enabled && rule.kind !== 'backup_age');
+    const rules = this.listRules().filter((rule) => rule.enabled && rule.kind !== 'backup_age' && !FLEET_RULES.has(rule.kind));
     const changes: AlertEvent[] = [];
     for (const rule of rules) {
       const firing = ruleFires(rule, observation);
@@ -587,8 +608,8 @@ export class Catalog {
 
   createPolicy(input: { name: string; kind: string; threshold?: number | null; environmentId?: string | null }): PolicyRecord {
     const kind = input.kind.trim();
-    if (!['require_ssl', 'limit_superusers'].includes(kind)) {
-      throw new AppError(400, 'kind must be require_ssl or limit_superusers');
+    if (!POLICY_KINDS.includes(kind as (typeof POLICY_KINDS)[number])) {
+      throw new AppError(400, `kind must be ${POLICY_KINDS.join(', ')}`);
     }
     const record: PolicyRecord = {
       id: id(),
@@ -625,18 +646,97 @@ export class Catalog {
         }
       }
     }
+    for (const policy of policies) {
+      if (policy.kind === 'require_mfa') {
+        const admins = this.db.prepare(`SELECT id, username FROM users WHERE role = 'admin'`).all() as Array<{ id: string; username: string }>;
+        for (const admin of admins) {
+          const totp = this.db.prepare('SELECT enabled FROM user_totp WHERE user_id = ?').get(admin.id) as { enabled: number } | undefined;
+          if (!totp || totp.enabled !== 1) {
+            violations.push({ policyId: policy.id, policyName: policy.name, engineId: admin.id, detail: `admin ${admin.username} has MFA disabled` });
+          }
+        }
+      }
+      if (policy.kind === 'backup_max_age') {
+        const latest = this.db.prepare(`SELECT created_at FROM backups WHERE status = 'succeeded' ORDER BY created_at DESC LIMIT 1`).get() as
+          | { created_at: string }
+          | undefined;
+        const ageHours = latest ? (Date.now() - Date.parse(latest.created_at)) / 36e5 : Number.POSITIVE_INFINITY;
+        const limit = policy.threshold ?? 24;
+        if (ageHours > limit) {
+          violations.push({
+            policyId: policy.id,
+            policyName: policy.name,
+            engineId: 'fleet',
+            detail: latest ? `newest backup is ${ageHours.toFixed(1)}h old` : 'no successful backup',
+          });
+        }
+      }
+      if (policy.kind === 'node_heartbeat_max_age') {
+        const nodes = this.db.prepare('SELECT id, name, last_seen_at FROM warden_nodes').all() as Array<{ id: string; name: string; last_seen_at: string | null }>;
+        const limit = policy.threshold ?? 120;
+        for (const node of nodes) {
+          const age = node.last_seen_at ? (Date.now() - Date.parse(node.last_seen_at)) / 1000 : Number.POSITIVE_INFINITY;
+          if (age > limit) {
+            violations.push({ policyId: policy.id, policyName: policy.name, engineId: node.id, detail: `${node.name} heartbeat is stale` });
+          }
+        }
+      }
+    }
     return violations;
   }
 
-  listWardenNodes(): Array<{ id: string; name: string; host: string; port: number; createdAt: string }> {
-    const rows = this.db.prepare('SELECT id, name, host, port, created_at FROM warden_nodes ORDER BY name').all() as Array<{
+  evaluateFleet(): AlertEvent[] {
+    const changes: AlertEvent[] = [];
+    const nodes = this.db.prepare('SELECT id, name, last_seen_at FROM warden_nodes').all() as Array<{ id: string; name: string; last_seen_at: string | null }>;
+    for (const rule of this.listRules().filter((item) => item.enabled && item.kind === 'node_stale')) {
+      for (const node of nodes) {
+        const age = node.last_seen_at ? (Date.now() - Date.parse(node.last_seen_at)) / 1000 : Number.POSITIVE_INFINITY;
+        changes.push(...this.setAlert(rule, node.id, age > rule.threshold, `${node.name} last seen ${Number.isFinite(age) ? `${Math.round(age)}s ago` : 'never'}`));
+      }
+    }
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const failed = this.db.prepare(`SELECT COUNT(*) AS c FROM jobs WHERE status = 'failed' AND created_at > ?`).get(since) as { c: number };
+    for (const rule of this.listRules().filter((item) => item.enabled && item.kind === 'job_failed')) {
+      changes.push(...this.setAlert(rule, 'fleet', failed.c > rule.threshold, `${failed.c} failed jobs in 24h`));
+    }
+    return changes;
+  }
+
+  metricsSnapshot(): { jobs: Record<string, number>; nodes: number; alertRules: number; firing: number } {
+    const jobs: Record<string, number> = {};
+    for (const status of ['succeeded', 'failed', 'running', 'queued']) {
+      const row = this.db.prepare('SELECT COUNT(*) AS c FROM jobs WHERE status = ?').get(status) as { c: number };
+      jobs[status] = row.c;
+    }
+    const nodes = this.db.prepare('SELECT COUNT(*) AS c FROM warden_nodes').get() as { c: number };
+    const rules = this.db.prepare('SELECT COUNT(*) AS c FROM alert_rules').get() as { c: number };
+    const firing = this.db.prepare(`SELECT COUNT(*) AS c FROM alert_events WHERE status = 'firing'`).get() as { c: number };
+    return { jobs, nodes: nodes.c, alertRules: rules.c, firing: firing.c };
+  }
+
+  listWardenNodes(): Array<{ id: string; name: string; host: string; port: number; createdAt: string; lastSeenAt: string | null }> {
+    const rows = this.db.prepare('SELECT id, name, host, port, created_at, last_seen_at FROM warden_nodes ORDER BY name').all() as Array<{
       id: string;
       name: string;
       host: string;
       port: number;
       created_at: string;
+      last_seen_at: string | null;
     }>;
-    return rows.map((row) => ({ id: row.id, name: row.name, host: row.host, port: row.port, createdAt: row.created_at }));
+    return rows.map((row) => ({ id: row.id, name: row.name, host: row.host, port: row.port, createdAt: row.created_at, lastSeenAt: row.last_seen_at }));
+  }
+
+  touchWardenNode(token: string): boolean {
+    const rows = this.db.prepare('SELECT id, token FROM warden_nodes').all() as Array<{ id: string; token: string }>;
+    for (const row of rows) {
+      const left = Buffer.from(row.token);
+      const right = Buffer.from(token);
+      if (left.length === right.length && timingSafeEqual(left, right)) {
+        this.db.prepare('UPDATE warden_nodes SET last_seen_at = ? WHERE id = ?').run(now(), row.id);
+        return true;
+      }
+    }
+    return false;
   }
 
   createWardenNode(input: { name: string; host: string; port?: number }): {

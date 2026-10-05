@@ -8,6 +8,7 @@ import { EnvProvider } from './env';
 import { Shell } from './shell';
 import { AuditPage, ClustersPage, ConnectorsPage, DashboardPage, EnginesPage, JobsPage, ServersPage, UsersPage } from './pages';
 import { AccountsPage, AlertsPage, BackupsPage, EnvironmentsPage, EventsPage, FindingsPage, MaintenancePage, RunbooksPage } from './platform';
+import { AccountPage, IdentityPage, PasswordChange, SnapshotsPage } from './parity';
 
 export function App() {
   const token = getToken();
@@ -39,6 +40,10 @@ export function App() {
     );
   }
 
+  if (me.data.mustChangePassword) {
+    return <PasswordChange onDone={() => window.location.assign('/dashboard')} />;
+  }
+
   return (
     <EnvProvider>
       <Shell user={me.data}>
@@ -59,6 +64,9 @@ export function App() {
           <Route path="/service-accounts" element={me.data.role === 'admin' ? <AccountsPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/findings" element={<FindingsPage role={me.data.role} />} />
           <Route path="/maintenance" element={me.data.role === 'admin' ? <MaintenancePage /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/account" element={<AccountPage />} />
+          <Route path="/identity" element={me.data.role === 'admin' ? <IdentityPage /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/snapshots" element={me.data.role === 'admin' ? <SnapshotsPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/connectors" element={<ConnectorsPage />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
@@ -72,24 +80,47 @@ function LoginPage() {
   const location = useLocation();
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
+  const [challenge, setChallenge] = useState('');
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     if (params.get('error')) setError('Sign-in failed');
-  }, [location.search]);
+    if (params.get('challenge')) setChallenge(params.get('challenge') || '');
+    const hash = new URLSearchParams(location.hash.replace(/^#/, ''));
+    const access = hash.get('accessToken');
+    if (access) {
+      setToken(access);
+      window.location.assign('/dashboard');
+    }
+  }, [location.search, location.hash]);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setPending(true);
     setError('');
     try {
-      const data = await api<{ accessToken: string; user: ApiUser }>('/api/v1/auth/login', {
+      if (challenge) {
+        const verified = await api<{ accessToken: string }>('/api/v1/auth/verify-2fa', {
+          method: 'POST',
+          body: JSON.stringify({ challengeToken: challenge, code }),
+        });
+        setToken(verified.accessToken);
+        navigate('/dashboard', { replace: true });
+        window.location.assign('/dashboard');
+        return;
+      }
+      const data = await api<{ accessToken?: string; challengeToken?: string; twoFactorRequired?: boolean; user: ApiUser }>('/api/v1/auth/login', {
         method: 'POST',
         body: JSON.stringify({ username, password }),
       });
-      setToken(data.accessToken);
+      if (data.twoFactorRequired && data.challengeToken) {
+        setChallenge(data.challengeToken);
+        return;
+      }
+      setToken(data.accessToken || null);
       navigate('/dashboard', { replace: true });
       window.location.assign('/dashboard');
     } catch (err) {
@@ -146,6 +177,18 @@ function LoginPage() {
               autoComplete="current-password"
             />
           </label>
+          {challenge && (
+            <label className="mt-4 block text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Authentication code
+              <input
+                className="mt-2 h-11 w-full border border-input bg-background px-3 text-sm font-normal normal-case tracking-normal text-foreground outline-none focus:border-ring"
+                value={code}
+                onChange={(event) => setCode(event.target.value)}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+              />
+            </label>
+          )}
           {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
           <button
             type="submit"

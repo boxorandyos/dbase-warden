@@ -7,6 +7,8 @@ export interface AuthToken {
   sub: string;
   username: string;
   role: Role;
+  sid?: string;
+  purpose?: 'access' | '2fa';
 }
 
 declare global {
@@ -17,12 +19,21 @@ declare global {
   }
 }
 
-export function signAccessToken(user: PublicUser, secret: string): string {
-  const payload: AuthToken = { sub: user.id, username: user.username, role: user.role };
+export function signAccessToken(user: PublicUser, secret: string, sid?: string): string {
+  const payload: AuthToken = { sub: user.id, username: user.username, role: user.role, sid, purpose: 'access' };
   return jwt.sign(payload, secret, { expiresIn: '12h' });
 }
 
-export function authenticate(secret: string, lookupServiceAccount?: (token: string) => PublicUser | null) {
+export function signChallengeToken(user: PublicUser, secret: string): string {
+  const payload: AuthToken = { sub: user.id, username: user.username, role: user.role, purpose: '2fa' };
+  return jwt.sign(payload, secret, { expiresIn: '5m' });
+}
+
+export function authenticate(
+  secret: string,
+  lookupServiceAccount?: (token: string) => PublicUser | null,
+  sessionLive?: (sid: string) => boolean,
+) {
   return (req: Request, _res: Response, next: NextFunction): void => {
     const header = req.header('authorization') ?? '';
     const match = header.match(/^Bearer\s+(.+)$/i);
@@ -42,10 +53,18 @@ export function authenticate(secret: string, lookupServiceAccount?: (token: stri
     }
     try {
       const decoded = jwt.verify(match[1], secret) as AuthToken;
+      if (decoded.purpose === '2fa') {
+        next(new AppError(401, 'Invalid or expired token'));
+        return;
+      }
+      if (decoded.sid && sessionLive && !sessionLive(decoded.sid)) {
+        next(new AppError(401, 'Session has ended'));
+        return;
+      }
       req.user = { id: decoded.sub, username: decoded.username, role: decoded.role, createdAt: '', environmentId: null };
       next();
-    } catch {
-      next(new AppError(401, 'Invalid or expired token'));
+    } catch (error) {
+      next(error instanceof AppError ? error : new AppError(401, 'Invalid or expired token'));
     }
   };
 }

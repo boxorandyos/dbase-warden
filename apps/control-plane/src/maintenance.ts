@@ -29,6 +29,12 @@ export interface MaintenanceCall {
   body: { kind: MaintenanceKind };
 }
 
+export function hostUpdateAllowed(productDefault: boolean, override = process.env.WARDEN_ALLOW_HOST_UPDATE): boolean {
+  if (override === '1') return true;
+  if (override === '0') return false;
+  return productDefault;
+}
+
 export function parseMaintenanceKind(value: unknown): MaintenanceKind {
   if (value === 'product' || value === 'packages') return value;
   throw new Error('kind must be product or packages');
