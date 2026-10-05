@@ -511,7 +511,11 @@ export function MaintenancePage() {
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const run = useMutation({
-    mutationFn: (path: string) => api<{ executed?: boolean; detail?: string; results?: unknown[] }>(path, { method: 'POST', body: JSON.stringify({ kind: 'product' }) }),
+    mutationFn: (path: string) =>
+      api<{ executed?: boolean; detail?: string; results?: unknown[] }>(path, {
+        method: 'POST',
+        body: JSON.stringify(path.endsWith('/runtime') ? { component: 'node' } : { kind: 'product' }),
+      }),
     onSuccess: (result) => {
       setError('');
       setNotice(result.detail || (result.results ? `${result.results.length} slaves contacted` : 'Maintenance requested'));
@@ -532,9 +536,12 @@ export function MaintenancePage() {
     <div className="space-y-4">
       <Panel title="This node">
         <p className="mb-3 text-sm text-muted-foreground">
-          Product update rebuilds Dbase Warden. Package update upgrades installed PostgreSQL, MySQL, and MariaDB packages. Both run on the host only when DBASE_ALLOW_HOST_UPDATE=1.
+          The container image builds on Node 24, the current long-term support release. Move Node to 24 replaces Node on a host install. Product update rebuilds Dbase Warden after that. Package update upgrades installed PostgreSQL, MySQL, and MariaDB packages. Host actions run only when DBASE_ALLOW_HOST_UPDATE=1.
         </p>
         <div className="flex flex-wrap gap-2">
+          <button className="h-10 border border-foreground/15 px-3 text-xs font-semibold uppercase tracking-[0.14em]" onClick={() => run.mutate('/api/v1/maintenance/runtime')}>
+            Move Node to 24
+          </button>
           <button className="h-10 border border-foreground/15 px-3 text-xs font-semibold uppercase tracking-[0.14em]" onClick={() => run.mutate('/api/v1/maintenance/product')}>
             Update product
           </button>

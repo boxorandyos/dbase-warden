@@ -88,7 +88,7 @@ docker compose -f deploy/docker-compose.yml up --build -d
 
 The SQLite volume is kept across recreates. Copy the volume before an upgrade you may need to undo.
 
-That rebuild stays on Node 22. Moving Node, or the pnpm version recorded in `package.json`, is a separate opt-in step that tests the new runtime before it replaces the running container: [docs/RUNTIME_UPGRADES.md](docs/RUNTIME_UPGRADES.md).
+Rebuilding the image uses Node 24. The SQLite volume is unchanged. Maintenance → Move Node to 24 is the host-install path. pnpm stays on the version in `package.json`: [docs/RUNTIME_UPGRADES.md](docs/RUNTIME_UPGRADES.md).
 
 `scripts/update-packages.sh` (root) upgrades installed packages from a fixed list: `postgresql`, `postgresql-client`, `mysql-server`, `mariadb-server`, `ca-certificates`, `openssl`. Packages that are not installed are skipped. It does not install a database server that is missing.
 
@@ -100,7 +100,7 @@ The console **Maintenance** page (admin) can request a product rebuild, the pack
 
 ## Development
 
-Requires Node.js 22 and pnpm 8.15.0.
+Requires Node.js 22 or newer and pnpm 8.15.0. The container image builds on Node 24, the current long-term support release.
 
 ```bash
 pnpm install

@@ -12,4 +12,4 @@ docker compose -f deploy/docker-compose.yml up --build
 
 The console and API are both served on port 3101 in that profile. Local development uses the Vite server on port 8188 instead.
 
-The image builds on Node 22. `DBASE_NODE_IMAGE` selects a different base for a trial build. See `docs/RUNTIME_UPGRADES.md` before pointing a running volume at that image.
+The image builds on Node 24. `DBASE_NODE_IMAGE` selects a different base for a trial build. See `docs/RUNTIME_UPGRADES.md`.

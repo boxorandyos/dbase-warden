@@ -1,8 +1,8 @@
 # Runtime upgrades
 
-`scripts/update.sh` and `docker compose up --build` rebuild the application on the Node version already selected. They do not move that version forward. The image stays on Node 22, and pnpm stays on the `packageManager` field in `package.json`, until you opt in.
+The container image builds on Node 24, the current long-term support release. `docker compose up --build` on a new checkout uses that image. A container that is already running stays on its current image until you rebuild. pnpm stays on the `packageManager` field in `package.json`.
 
-Node 22 is in maintenance until April 2027. Node 24 is the current long-term support line. Node 26 is Current until it enters long-term support. The control plane uses `node:sqlite`, so a major has to pass the test script before it replaces a running server.
+Node 22 remains supported for a local checkout. Node 26 is Current until it enters long-term support. The control plane uses `node:sqlite`. The test suite for this release passed on Node 24.
 
 ## Container install
 

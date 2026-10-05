@@ -9,6 +9,8 @@ import { AppError } from './errors';
 import { isEngineJobType, plannedProcessController, runEngineJob, type OperationDeps, type ProcessController } from './operations';
 import {
   maintenanceKeyMatches,
+  describeRuntimes,
+  scheduleRuntime,
   slaveMaintenanceUrl,
   parseMaintenanceKind,
   scheduleMaintenance,
@@ -771,6 +773,21 @@ export function createApp(options: AppOptions): express.Express {
     try {
       const result = await schedule('packages');
       options.store.audit({ actor: req.user!.username, action: 'maintenance.packages', resourceType: 'node', detail: result.detail });
+      res.status(202).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  api.get('/v1/maintenance/runtimes', auth, authorize('admin'), (_req, res) => {
+    res.json({ success: true, data: describeRuntimes(process.version) });
+  });
+
+  api.post('/v1/maintenance/runtime', auth, authorize('admin'), async (req, res, next) => {
+    try {
+      const root = maintenance.root ?? path.resolve(process.cwd(), '..', '..');
+      const result = await scheduleRuntime(root, String(req.body?.component ?? ''), Boolean(maintenance.allowHostUpdate));
+      options.store.audit({ actor: req.user!.username, action: 'maintenance.runtime', resourceType: 'node', detail: result.detail });
       res.status(202).json({ success: true, data: result });
     } catch (error) {
       next(error);

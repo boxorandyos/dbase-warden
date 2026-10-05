@@ -1,5 +1,5 @@
-# NODE_IMAGE defaults to Node 22. scripts/try-node.sh passes a newer major without changing this default.
-ARG NODE_IMAGE=node:22-bookworm-slim
+# NODE_IMAGE defaults to Node 24, the current long-term support release. scripts/try-node.sh can pass another major.
+ARG NODE_IMAGE=node:24-bookworm-slim
 FROM ${NODE_IMAGE}
 WORKDIR /app
 RUN corepack enable

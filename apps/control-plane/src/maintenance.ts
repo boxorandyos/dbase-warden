@@ -65,6 +65,50 @@ export function planSlaveUpgrades(nodes: MaintenanceNode[], kind: MaintenanceKin
   }));
 }
 
+export function describeRuntimes(nodeVersion: string) {
+  return [
+    {
+      id: 'node',
+      current: nodeVersion,
+      newInstall: '24',
+      latestLts: '24',
+      note: 'The container image builds on Node 24. This action replaces Node on a host install and then you run the product update. pnpm stays on the version in package.json.',
+      canRun: true,
+    },
+  ];
+}
+
+export function planRuntime(component: string, allow: boolean): { component: 'node'; executed: boolean; detail: string } {
+  if (component !== 'node') throw new Error('component must be node');
+  const detail = 'bash scripts/upgrade-node.sh 24';
+  if (!allow) return { component, executed: false, detail: `${detail} (set DBASE_ALLOW_HOST_UPDATE=1 to run it)` };
+  return { component, executed: true, detail: `scheduled: ${detail}` };
+}
+
+export async function scheduleRuntime(
+  root: string,
+  component: string,
+  allow: boolean,
+): Promise<{ component: 'node'; executed: boolean; detail: string }> {
+  const plan = planRuntime(component, allow);
+  if (!plan.executed) return plan;
+  const script = path.join(root, 'scripts', 'upgrade-node.sh');
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn('bash', [script, '24'], {
+      cwd: root,
+      detached: true,
+      stdio: 'ignore',
+      env: { ...process.env, UPGRADE_NODE_CONFIRM: '1' },
+    });
+    child.on('error', reject);
+    child.on('spawn', () => {
+      child.unref();
+      resolve();
+    });
+  });
+  return plan;
+}
+
 export function scriptFor(kind: MaintenanceKind): string {
   return kind === 'packages' ? 'update-packages.sh' : 'update.sh';
 }

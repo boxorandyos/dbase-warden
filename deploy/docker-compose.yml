@@ -4,7 +4,7 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile
       args:
-        NODE_IMAGE: ${DBASE_NODE_IMAGE:-node:22-bookworm-slim}
+        NODE_IMAGE: ${DBASE_NODE_IMAGE:-node:24-bookworm-slim}
     ports:
       - "3101:3101"
     environment:

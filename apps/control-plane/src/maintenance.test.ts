@@ -1,8 +1,18 @@
 import { describe, expect, it, beforeAll } from 'vitest';
+import { planRuntime } from './maintenance';
 import request from 'supertest';
 import { ConnectorRegistry } from '@dbase-warden/engines';
 import { createApp } from './app';
 import { openStore, type Store } from './store';
+
+describe('runtime plan', () => {
+  it('offers Node 24 and stays planned until host updates are enabled', () => {
+    expect(planRuntime('node', false).executed).toBe(false);
+    expect(planRuntime('node', false).detail).toContain('upgrade-node.sh 24');
+    expect(planRuntime('node', true).executed).toBe(true);
+    expect(() => planRuntime('postgres', true)).toThrow(/component/);
+  });
+});
 
 describe('maintenance', () => {
   let store: Store;
