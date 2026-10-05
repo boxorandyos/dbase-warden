@@ -3,6 +3,8 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
+      args:
+        NODE_IMAGE: ${DBASE_NODE_IMAGE:-node:22-bookworm-slim}
     ports:
       - "3101:3101"
     environment:

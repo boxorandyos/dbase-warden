@@ -88,6 +88,8 @@ docker compose -f deploy/docker-compose.yml up --build -d
 
 The SQLite volume is kept across recreates. Copy the volume before an upgrade you may need to undo.
 
+That rebuild stays on Node 22. Moving Node, or the pnpm version recorded in `package.json`, is a separate opt-in step that tests the new runtime before it replaces the running container: [docs/RUNTIME_UPGRADES.md](docs/RUNTIME_UPGRADES.md).
+
 `scripts/update-packages.sh` (root) upgrades installed packages from a fixed list: `postgresql`, `postgresql-client`, `mysql-server`, `mariadb-server`, `ca-certificates`, `openssl`. Packages that are not installed are skipped. It does not install a database server that is missing.
 
 The console **Maintenance** page (admin) can request a product rebuild, the package upgrade, or a fan-out to registered slaves. Those calls stay planned until the host-update flag above is set.
@@ -154,6 +156,7 @@ Engine passwords stay in the control-plane SQLite file. Backup artifacts are cat
 | Roadmap | [docs/ROADMAP.md](docs/ROADMAP.md) |
 | Console theme | [docs/UI_THEME.md](docs/UI_THEME.md) |
 | Container image | [deploy/README.md](deploy/README.md) |
+| Node major upgrades | [docs/RUNTIME_UPGRADES.md](docs/RUNTIME_UPGRADES.md) |
 
 ---
 
