@@ -143,9 +143,11 @@ export function AlertsPage({ role }: { role: string }) {
             <input name="name" required placeholder="Name" className="h-10 border border-input bg-background px-3 text-sm" />
             <select name="kind" className="h-10 border border-input bg-background px-2 text-sm" defaultValue="connections">
               <option value="availability">availability</option>
+              <option value="backup_age">backup_age</option>
+              <option value="node_stale">node_stale</option>
+              <option value="job_failed">job_failed</option>
               <option value="connections">connections</option>
               <option value="replication_lag">replication_lag</option>
-              <option value="backup_age">backup_age</option>
             </select>
             <input name="threshold" type="number" min={0} required placeholder="Threshold" className="h-10 w-28 border border-input bg-background px-3 text-sm" />
             <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground">Add rule</button>
