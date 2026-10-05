@@ -129,13 +129,13 @@ These routes use the same envelope, roles, and `/api/v1` version.
 | `GET` | `/api/v1/secrets/:engineId` | admin. Versions only, never the secret |
 | `GET` | `/api/v1/audit/export?format=json\|csv` | any |
 
-`POST /api/v1/maintenance/product` and `POST /api/v1/maintenance/packages` are admin-only. They plan `scripts/update.sh` or `scripts/update-packages.sh` and run the script when `DBASE_ALLOW_HOST_UPDATE=1`. Package updates upgrade installed packages from a fixed list: `postgresql`, `postgresql-client`, `mysql-server`, `mariadb-server`, `ca-certificates`, `openssl`.
+`POST /api/v1/maintenance/product` and `POST /api/v1/maintenance/packages` are admin-only. They plan `scripts/update.sh` or `scripts/update-packages.sh`. The script runs when `DBASE_ALLOW_HOST_UPDATE=1` or `WARDEN_ALLOW_HOST_UPDATE=1`. `WARDEN_ALLOW_HOST_UPDATE=0` plans it even when the dbase flag is on. Package updates upgrade installed packages from a fixed list: `postgresql`, `postgresql-client`, `mysql-server`, `mariadb-server`, `ca-certificates`, `openssl`.
 
 `POST /api/v1/warden-nodes` registers a slave control plane. The response includes a `dw_` token once. The slave sets that value as `DBASE_MAINTENANCE_KEY` and `DBASE_NODE_ROLE=slave`. `POST /api/v1/maintenance/slaves` on a master calls each slave's `POST /api/v1/maintenance/apply` with `X-Maintenance-Key`. `POST /api/v1/warden-nodes/heartbeat` updates `lastSeenAt` for that token. `POST /api/v1/platform/sync` pushes environments, runbooks, alert rules, and policies to each registered node.
 
 Sign-in returns an access token and a refresh token, and opens a session. `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/sessions`, and `POST /api/v1/auth/logout-all` manage that session. `POST /api/v1/auth/2fa/setup` and `POST /api/v1/auth/2fa/enable` turn on TOTP. A user created by an admin has `mustChangePassword` until `POST /api/v1/auth/first-login/change-password`. LDAP and OIDC providers are stored with `POST /api/v1/identity/providers`. `POST /api/v1/auth/ldap` binds with a provider. `GET /api/v1/auth/oidc/start` redirects to the issuer.
 
-`GET /metrics` is Prometheus text. `GET /api/v1/metrics` is the same sample as JSON. `POST /api/v1/platform/snapshots` stores the platform document, and `POST /api/v1/platform/snapshots/:id/apply` restores it. `GET /api/v1/platform/logs` tails the configured update log. `WARDEN_ALLOW_HOST_UPDATE=1` runs host maintenance even when `DBASE_ALLOW_HOST_UPDATE` is unset, and `0` forces the planned response.
+`GET /metrics` is Prometheus text. `GET /api/v1/metrics` is the same sample as JSON. `POST /api/v1/platform/snapshots` stores the platform document, `POST /api/v1/platform/snapshots/:id/apply` restores it, and `POST /api/v1/platform/sync` pushes it to registered slaves. `GET /api/v1/platform/logs` tails the configured update log. Host maintenance stays planned until `DBASE_ALLOW_HOST_UPDATE=1` or `WARDEN_ALLOW_HOST_UPDATE=1`. `WARDEN_ALLOW_HOST_UPDATE=0` plans it even when the dbase flag is on.
 
 `POST /api/v1/jobs` accepts:
 

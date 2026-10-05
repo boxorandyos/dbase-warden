@@ -7,8 +7,8 @@ import { Brand } from './chrome';
 import { EnvProvider } from './env';
 import { Shell } from './shell';
 import { AuditPage, ClustersPage, ConnectorsPage, DashboardPage, EnginesPage, JobsPage, ServersPage, UsersPage } from './pages';
-import { AccountsPage, AlertsPage, BackupsPage, EnvironmentsPage, EventsPage, FindingsPage, MaintenancePage, RunbooksPage } from './platform';
-import { AccountPage, IdentityPage, PasswordChange, SnapshotsPage } from './parity';
+import { AccountsPage, AlertsPage, BackupsPage, EnvironmentsPage, EventsPage, FindingsPage, MaintenancePage, NodesPage, RunbooksPage } from './platform';
+import { AccountPage, IdentityPage, MetricsPage, PasswordChange, SnapshotsPage } from './parity';
 
 export function App() {
   const token = getToken();
@@ -56,6 +56,8 @@ export function App() {
           <Route path="/environments" element={<EnvironmentsPage role={me.data.role} />} />
           <Route path="/alerts" element={<AlertsPage role={me.data.role} />} />
           <Route path="/events" element={<EventsPage role={me.data.role} />} />
+          <Route path="/metrics" element={<MetricsPage />} />
+          <Route path="/nodes" element={me.data.role === 'admin' ? <NodesPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/jobs" element={<JobsPage />} />
           <Route path="/backups" element={<BackupsPage role={me.data.role} />} />
           <Route path="/runbooks" element={<RunbooksPage role={me.data.role} />} />

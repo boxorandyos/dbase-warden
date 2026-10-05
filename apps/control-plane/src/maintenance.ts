@@ -30,8 +30,8 @@ export interface MaintenanceCall {
 }
 
 export function hostUpdateAllowed(productDefault: boolean, override = process.env.WARDEN_ALLOW_HOST_UPDATE): boolean {
-  if (override === '1') return true;
-  if (override === '0') return false;
+  if (override === '1' || override === 'true') return true;
+  if (override === '0' || override === 'false') return false;
   return productDefault;
 }
 
@@ -81,7 +81,7 @@ export function describeRuntimes(nodeVersion: string) {
 export function planRuntime(component: string, allow: boolean): { component: 'node'; executed: boolean; detail: string } {
   if (component !== 'node') throw new Error('component must be node');
   const detail = 'bash scripts/upgrade-node.sh 24';
-  if (!allow) return { component, executed: false, detail: `${detail} (set DBASE_ALLOW_HOST_UPDATE=1 to run it)` };
+  if (!allow) return { component, executed: false, detail: `${detail} (set WARDEN_ALLOW_HOST_UPDATE=1 to run it)` };
   return { component, executed: true, detail: `scheduled: ${detail}` };
 }
 
@@ -121,7 +121,7 @@ export async function scheduleMaintenance(
   const script = path.join(root, 'scripts', scriptFor(kind));
   const detail = `bash ${script}`;
   if (!allow) {
-    return { executed: false, detail: `${detail} (set DBASE_ALLOW_HOST_UPDATE=1 to run it)` };
+    return { executed: false, detail: `${detail} (set WARDEN_ALLOW_HOST_UPDATE=1 to run it)` };
   }
   await new Promise<void>((resolve, reject) => {
     const child = spawn('bash', [script], { cwd: root, detached: true, stdio: 'ignore' });

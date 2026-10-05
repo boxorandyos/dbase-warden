@@ -1,88 +1,156 @@
 import { ReactNode, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Activity, Bell, BookOpen, Cable, Database, HardDrive, LogOut, ScrollText, Server, ShieldCheck, Users, Waypoints } from 'lucide-react';
+import { Activity, BarChart3, Bell, BookOpen, Cable, Database, HardDrive, LogOut, ScrollText, Server, ShieldCheck, UserRound, Users, Waypoints, Wrench } from 'lucide-react';
 import type { ApiUser } from './api';
 import { setToken } from './api';
 import { Brand, MenuButton, MobileNav, ThemeIcon, useTheme } from './chrome';
 import { useEnvironment } from './env';
 
+const LANGUAGE_KEY = 'dbase-warden.language';
+
+const dict = {
+  en: {
+    pulse: 'Pulse',
+    estate: 'Estate',
+    signals: 'Signals',
+    fleet: 'Fleet',
+    servers: 'Servers',
+    engines: 'Engines',
+    clusters: 'Clusters',
+    environments: 'Environments',
+    connectors: 'Connectors',
+    alerts: 'Alerts',
+    events: 'Events',
+    metrics: 'Metrics',
+    users: 'User Management',
+    serviceAccounts: 'Service Accounts',
+    identity: 'Identity',
+    nodes: 'Slave Nodes',
+    maintenance: 'Maintenance',
+    snapshots: 'Snapshots',
+    backups: 'Backups',
+    jobs: 'Jobs',
+    runbooks: 'Runbooks',
+    hardening: 'Hardening',
+    audit: 'Audit',
+    account: 'Account',
+  },
+  de: {
+    pulse: 'Pulse',
+    estate: 'Estate',
+    signals: 'Signals',
+    fleet: 'Fleet',
+    servers: 'Server',
+    engines: 'Engines',
+    clusters: 'Cluster',
+    environments: 'Umgebungen',
+    connectors: 'Konnektoren',
+    alerts: 'Warnmeldungen',
+    events: 'Ereignisse',
+    metrics: 'Metriken',
+    users: 'Benutzerverwaltung',
+    serviceAccounts: 'Dienstkonten',
+    identity: 'Identität',
+    nodes: 'Slave-Knoten',
+    maintenance: 'Wartung',
+    snapshots: 'Snapshots',
+    backups: 'Sicherungen',
+    jobs: 'Aufträge',
+    runbooks: 'Runbooks',
+    hardening: 'Härtung',
+    audit: 'Audit',
+    account: 'Konto',
+  },
+} as const;
+
+type Lang = keyof typeof dict;
+type LabelKey = keyof typeof dict.en;
+
+function useLang() {
+  const [lang, setLang] = useState<Lang>(() => (localStorage.getItem(LANGUAGE_KEY) === 'de' ? 'de' : 'en'));
+  function toggle() {
+    const next: Lang = lang === 'en' ? 'de' : 'en';
+    localStorage.setItem(LANGUAGE_KEY, next);
+    setLang(next);
+  }
+  return { lang, toggle, t: (key: LabelKey) => dict[lang][key] };
+}
+
 const sections = [
-  { id: 'pulse', label: 'Pulse', path: '/dashboard' },
+  { id: 'pulse', label: 'pulse', path: '/dashboard' },
   {
     id: 'estate',
-    label: 'Estate',
+    label: 'estate',
     items: [
-      { path: '/servers', label: 'Servers', icon: Server },
-      { path: '/engines', label: 'Engines', icon: Database },
-      { path: '/clusters', label: 'Clusters', icon: Waypoints },
-      { path: '/environments', label: 'Environments', icon: Server },
+      { path: '/servers', label: 'servers', icon: Server },
+      { path: '/engines', label: 'engines', icon: Database },
+      { path: '/clusters', label: 'clusters', icon: Waypoints },
+      { path: '/environments', label: 'environments', icon: Server },
+      { path: '/connectors', label: 'connectors', icon: Cable },
     ],
   },
   {
     id: 'signals',
-    label: 'Signals',
+    label: 'signals',
     items: [
-      { path: '/alerts', label: 'Alerts', icon: Bell },
-      { path: '/events', label: 'Events', icon: Activity },
-    ],
-  },
-  {
-    id: 'operations',
-    label: 'Operations',
-    items: [
-      { path: '/jobs', label: 'Jobs', icon: Activity },
-      { path: '/backups', label: 'Backups', icon: HardDrive },
-      { path: '/runbooks', label: 'Runbooks', icon: BookOpen },
-      { path: '/audit', label: 'Audit', icon: ScrollText },
+      { path: '/alerts', label: 'alerts', icon: Bell },
+      { path: '/events', label: 'events', icon: Activity },
+      { path: '/metrics', label: 'metrics', icon: BarChart3 },
     ],
   },
   {
     id: 'fleet',
-    label: 'Fleet',
+    label: 'fleet',
     items: [
-      { path: '/users', label: 'User Management', icon: Users },
-      { path: '/service-accounts', label: 'Service Accounts', icon: Users },
-      { path: '/findings', label: 'Hardening', icon: ShieldCheck },
-      { path: '/connectors', label: 'Connectors', icon: Cable },
-      { path: '/maintenance', label: 'Maintenance', icon: Server },
-      { path: '/account', label: 'Account', icon: Users },
-      { path: '/identity', label: 'Identity', icon: ShieldCheck },
-      { path: '/snapshots', label: 'Snapshots', icon: HardDrive },
+      { path: '/users', label: 'users', icon: Users },
+      { path: '/service-accounts', label: 'serviceAccounts', icon: Users },
+      { path: '/identity', label: 'identity', icon: ShieldCheck },
+      { path: '/nodes', label: 'nodes', icon: Server },
+      { path: '/maintenance', label: 'maintenance', icon: Wrench },
+      { path: '/snapshots', label: 'snapshots', icon: HardDrive },
+      { path: '/backups', label: 'backups', icon: HardDrive },
+      { path: '/jobs', label: 'jobs', icon: Activity },
+      { path: '/runbooks', label: 'runbooks', icon: BookOpen },
+      { path: '/findings', label: 'hardening', icon: ShieldCheck },
+      { path: '/audit', label: 'audit', icon: ScrollText },
     ],
   },
 ] as const;
 
-const titles: Record<string, string> = {
-  dashboard: 'Pulse',
-  servers: 'Servers',
-  engines: 'Engines',
-  clusters: 'Clusters',
-  jobs: 'Jobs',
-  audit: 'Audit',
-  users: 'User Management',
-  connectors: 'Connectors',
-  alerts: 'Alerts',
-  events: 'Events',
-  backups: 'Backups',
-  runbooks: 'Runbooks',
-  findings: 'Hardening',
-  maintenance: 'Maintenance',
-  account: 'Account',
-  identity: 'Identity',
-  snapshots: 'Snapshots',
-  environments: 'Environments',
-  'service-accounts': 'Service Accounts',
+const titles: Record<string, LabelKey> = {
+  dashboard: 'pulse',
+  servers: 'servers',
+  engines: 'engines',
+  clusters: 'clusters',
+  jobs: 'jobs',
+  audit: 'audit',
+  users: 'users',
+  connectors: 'connectors',
+  alerts: 'alerts',
+  events: 'events',
+  metrics: 'metrics',
+  backups: 'backups',
+  runbooks: 'runbooks',
+  findings: 'hardening',
+  maintenance: 'maintenance',
+  nodes: 'nodes',
+  account: 'account',
+  identity: 'identity',
+  snapshots: 'snapshots',
+  environments: 'environments',
+  'service-accounts': 'serviceAccounts',
 };
 
 export function Shell({ user, children }: { user: ApiUser; children: ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [dark, toggleTheme] = useTheme();
+  const { lang, toggle, t } = useLang();
   const [mobile, setMobile] = useState(false);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const environment = useEnvironment();
   const segment = location.pathname.split('/').filter(Boolean)[0] ?? 'dashboard';
-  const title = titles[segment] ?? 'Dbase';
+  const title = t(titles[segment] ?? 'pulse');
 
   function logout() {
     setToken(null);
@@ -90,7 +158,7 @@ export function Shell({ user, children }: { user: ApiUser; children: ReactNode }
     window.location.assign('/login');
   }
 
-  const adminOnly = new Set(user.role === 'admin' ? [] : ['/users', '/service-accounts', '/maintenance', '/identity', '/snapshots']);
+  const adminOnly = new Set(user.role === 'admin' ? [] : ['/users', '/service-accounts', '/maintenance', '/identity', '/snapshots', '/nodes']);
   const links = (
     <nav className="flex flex-col gap-1 md:flex-row md:items-center md:gap-1">
       {sections.map((section) =>
@@ -101,7 +169,7 @@ export function Shell({ user, children }: { user: ApiUser; children: ReactNode }
             onClick={() => setMobile(false)}
             className={({ isActive }) => navClass(isActive)}
           >
-            {section.label}
+            {t(section.label)}
           </NavLink>
         ) : (
           <div
@@ -114,12 +182,12 @@ export function Shell({ user, children }: { user: ApiUser; children: ReactNode }
               className={navClass(section.items.some((item) => location.pathname.startsWith(item.path)))}
               onClick={() => setOpenMenu(openMenu === section.id ? null : section.id)}
             >
-              {section.label}
+              {t(section.label)}
             </button>
             {openMenu === section.id && (
               <div className="z-40 min-w-[12rem] border border-foreground/10 bg-popover p-1 md:absolute md:left-0 md:top-full">
                 <div className="border-b border-border px-3 py-2 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-                  {section.label}
+                  {t(section.label)}
                 </div>
                 {section.items.filter((item) => !adminOnly.has(item.path)).map((item) => {
                   const Icon = item.icon;
@@ -136,7 +204,7 @@ export function Shell({ user, children }: { user: ApiUser; children: ReactNode }
                       }
                     >
                       <Icon className="h-4 w-4 opacity-70" />
-                      {item.label}
+                      {t(item.label)}
                     </NavLink>
                   );
                 })}
@@ -170,8 +238,14 @@ export function Shell({ user, children }: { user: ApiUser; children: ReactNode }
                 ))}
               </select>
             )}
+            <button className="border border-transparent px-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground hover:text-foreground" onClick={toggle} aria-label="Language">
+              {lang === 'en' ? 'DE' : 'EN'}
+            </button>
             <button className="border border-transparent p-2 text-muted-foreground hover:text-foreground" onClick={toggleTheme} aria-label="Toggle theme">
               <ThemeIcon dark={dark} />
+            </button>
+            <button className="border border-transparent p-2 text-muted-foreground hover:text-foreground" onClick={() => navigate('/account')} aria-label={t('account')}>
+              <UserRound className="h-4 w-4" />
             </button>
             <div className="hidden text-right sm:block">
               <div className="text-xs font-semibold">{user.username}</div>

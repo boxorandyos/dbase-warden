@@ -69,7 +69,7 @@ Copy `.env.example` for local runs. The Compose file sets production values itse
 - **CORS:** `CORS_ORIGIN`. Compose defaults to `http://localhost:3101`. Local Vite uses `http://localhost:8188`.
 - **Console files:** `WEB_DIST` points at the built console. Compose sets `/app/apps/web-console/dist`. Leave it unset for the Vite dev server.
 - **Process control:** `DBASE_ALLOW_PROCESS_CONTROL=1` runs the planned `systemctl` start, stop, or restart. The default records the plan and does not call `systemctl`.
-- **Host updates:** `DBASE_ALLOW_HOST_UPDATE=1` runs `scripts/update.sh` or `scripts/update-packages.sh`. Otherwise the API records the planned command. `WARDEN_ALLOW_HOST_UPDATE=1` runs the script even when the dbase flag is unset; `WARDEN_ALLOW_HOST_UPDATE=0` plans it.
+- **Host updates:** unset, the API records the planned command. `DBASE_ALLOW_HOST_UPDATE=1` runs `scripts/update.sh` or `scripts/update-packages.sh`. `WARDEN_ALLOW_HOST_UPDATE=1` runs the script even when the dbase flag is unset; `WARDEN_ALLOW_HOST_UPDATE=0` plans it even when the dbase flag is on.
 - **Node role:** `DBASE_NODE_ROLE=master` on the node that may trigger slaves. A slave accepts `POST /api/v1/maintenance/apply` when `X-Maintenance-Key` matches `DBASE_MAINTENANCE_KEY`.
 
 When the user table is empty and `DBASE_ADMIN_PASSWORD` is unset outside production, the API creates `admin` / `dbase-admin` and prints a warning. Do not use that password on a shared machine.

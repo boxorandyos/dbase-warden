@@ -162,12 +162,21 @@ export function IdentityPage() {
   );
 }
 
+export function MetricsPage() {
+  const metrics = useQuery({ queryKey: ['metrics'], queryFn: () => api<Record<string, unknown>>('/api/v1/metrics') });
+  return (
+    <section className="border border-border bg-card p-4">
+      <h2 className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Platform</h2>
+      <pre className="overflow-auto text-xs">{JSON.stringify(metrics.data ?? {}, null, 2)}</pre>
+    </section>
+  );
+}
+
 export function SnapshotsPage() {
   const queryClient = useQueryClient();
   const snapshots = useQuery({ queryKey: ['snapshots'], queryFn: () => api<SnapshotRow[]>('/api/v1/platform/snapshots') });
-  const metrics = useQuery({ queryKey: ['metrics'], queryFn: () => api<Record<string, unknown>>('/api/v1/metrics') });
-  const logs = useQuery({ queryKey: ['update-log'], queryFn: () => api<{ content: string; exists: boolean }>('/api/v1/platform/logs') });
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const create = useMutation({
     mutationFn: () => api('/api/v1/platform/snapshots', { method: 'POST', body: '{}' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['snapshots'] }),
@@ -177,42 +186,38 @@ export function SnapshotsPage() {
     mutationFn: (id: string) => api(`/api/v1/platform/snapshots/${id}/apply`, { method: 'POST', body: '{}' }),
     onError: (err: Error) => setError(err.message),
   });
-  const evaluate = useMutation({
-    mutationFn: () => api('/api/v1/platform/alerts/evaluate', { method: 'POST', body: '{}' }),
+  const sync = useMutation({
+    mutationFn: () => api<unknown[]>('/api/v1/platform/sync', { method: 'POST', body: '{}' }),
+    onSuccess: (result) => setNotice(`${result.length} slaves contacted`),
+    onError: (err: Error) => setError(err.message),
   });
   return (
-    <div className="space-y-4">
-      <section className="border border-border bg-card p-4">
-        <h2 className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Metrics</h2>
-        <pre className="overflow-auto text-xs">{JSON.stringify(metrics.data ?? {}, null, 2)}</pre>
-        <button className="mt-3 h-10 border border-foreground/15 px-3 text-xs font-semibold uppercase tracking-[0.14em]" onClick={() => evaluate.mutate()}>
-          Evaluate fleet alerts
-        </button>
-      </section>
-      <section className="border border-border bg-card p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Snapshots</h2>
+    <section className="border border-border bg-card p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Platform document</h2>
+        <div className="flex gap-2">
+          <button className="h-10 border border-foreground/15 px-3 text-xs font-semibold uppercase tracking-[0.14em]" onClick={() => sync.mutate()}>
+            Push to slaves
+          </button>
           <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground" onClick={() => create.mutate()}>
             Capture
           </button>
         </div>
-        {snapshots.data?.map((snapshot) => (
-          <div key={snapshot.id} className="flex items-center justify-between border-b border-border py-2 text-sm">
-            <span>
-              {snapshot.createdAt} · {snapshot.actor}
-            </span>
-            <button className="text-xs uppercase tracking-[0.14em]" onClick={() => apply.mutate(snapshot.id)}>
-              Apply
-            </button>
-          </div>
-        ))}
-      </section>
-      <section className="border border-border bg-card p-4">
-        <h2 className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Update log</h2>
-        <pre className="max-h-64 overflow-auto text-xs">{logs.data?.exists ? logs.data.content : 'No update log yet.'}</pre>
-      </section>
-      {error && <p className="text-sm text-destructive">{error}</p>}
-    </div>
+      </div>
+      <p className="mb-3 text-sm text-muted-foreground">Environments, runbooks, alert rules, and policies.</p>
+      {snapshots.data?.map((snapshot) => (
+        <div key={snapshot.id} className="flex items-center justify-between border-b border-border py-2 text-sm">
+          <span>
+            {snapshot.createdAt} · {snapshot.actor}
+          </span>
+          <button className="text-xs uppercase tracking-[0.14em]" onClick={() => apply.mutate(snapshot.id)}>
+            Apply
+          </button>
+        </div>
+      ))}
+      {notice && <p className="mt-3 text-sm text-muted-foreground">{notice}</p>}
+      {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
+    </section>
   );
 }
 
