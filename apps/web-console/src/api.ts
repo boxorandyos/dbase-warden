@@ -5,6 +5,10 @@ export interface ApiUser {
   username: string;
   role: 'admin' | 'moderator' | 'viewer';
   createdAt: string;
+  mustChangePassword?: boolean;
+  totpEnabled?: boolean;
+  email?: string;
+  authProvider?: string;
 }
 
 export interface ServerRecord {
@@ -94,7 +98,8 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   const body = (await response.json().catch(() => ({}))) as { success?: boolean; message?: string; data?: T };
-  if (response.status === 401 && !path.includes('/auth/login')) {
+  const authAttempt = ['/auth/login', '/auth/verify-2fa', '/auth/first-login/change-password', '/auth/ldap', '/auth/refresh'].some((item) => path.includes(item));
+  if (response.status === 401 && !authAttempt) {
     setToken(null);
     if (!window.location.pathname.startsWith('/login')) window.location.assign('/login');
   }

@@ -497,6 +497,94 @@ export function AccountsPage() {
   );
 }
 
+interface WardenNode {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+}
+
+export function MaintenancePage() {
+  const queryClient = useQueryClient();
+  const nodes = useQuery({ queryKey: ['warden-nodes'], queryFn: () => api<WardenNode[]>('/api/v1/warden-nodes') });
+  const [token, setToken] = useState('');
+  const [notice, setNotice] = useState('');
+  const [error, setError] = useState('');
+  const run = useMutation({
+    mutationFn: (path: string) => api<{ executed?: boolean; detail?: string; results?: unknown[] }>(path, { method: 'POST', body: JSON.stringify({ kind: 'product' }) }),
+    onSuccess: (result) => {
+      setError('');
+      setNotice(result.detail || (result.results ? `${result.results.length} slaves contacted` : 'Maintenance requested'));
+    },
+    onError: (err: Error) => setError(err.message),
+  });
+  const create = useMutation({
+    mutationFn: (body: { name: string; host: string; port: number }) =>
+      api<WardenNode & { token: string }>('/api/v1/warden-nodes', { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: async (node) => {
+      setToken(node.token);
+      setError('');
+      await queryClient.invalidateQueries({ queryKey: ['warden-nodes'] });
+    },
+    onError: (err: Error) => setError(err.message),
+  });
+  return (
+    <div className="space-y-4">
+      <Panel title="This node">
+        <p className="mb-3 text-sm text-muted-foreground">
+          Product update rebuilds Dbase Warden. Package update upgrades installed PostgreSQL, MySQL, and MariaDB packages. Both run on the host only when DBASE_ALLOW_HOST_UPDATE=1.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button className="h-10 border border-foreground/15 px-3 text-xs font-semibold uppercase tracking-[0.14em]" onClick={() => run.mutate('/api/v1/maintenance/product')}>
+            Update product
+          </button>
+          <button className="h-10 border border-foreground/15 px-3 text-xs font-semibold uppercase tracking-[0.14em]" onClick={() => run.mutate('/api/v1/maintenance/packages')}>
+            Update packages
+          </button>
+          <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground" onClick={() => run.mutate('/api/v1/maintenance/slaves')}>
+            Upgrade slaves
+          </button>
+        </div>
+        {notice && <p className="mt-3 text-sm text-muted-foreground">{notice}</p>}
+      </Panel>
+      <Panel title="Slave nodes">
+        <ul className="divide-y divide-border text-sm">
+          {nodes.data?.map((node) => (
+            <li key={node.id} className="flex justify-between py-3">
+              <span className="font-medium">{node.name}</span>
+              <span className="font-mono text-xs text-muted-foreground">
+                {node.host}:{node.port}
+              </span>
+            </li>
+          ))}
+        </ul>
+        {nodes.data?.length === 0 && <Empty label="No slave nodes registered." />}
+        <form
+          className="mt-4 flex flex-wrap gap-2"
+          onSubmit={(event: FormEvent<HTMLFormElement>) => {
+            event.preventDefault();
+            const data = new FormData(event.currentTarget);
+            setError('');
+            create.mutate({
+              name: String(data.get('name') ?? ''),
+              host: String(data.get('host') ?? ''),
+              port: Number(data.get('port') ?? 3101),
+            });
+            event.currentTarget.reset();
+          }}
+        >
+          <input name="name" required placeholder="Name" className="h-10 border border-input bg-background px-3 text-sm" />
+          <input name="host" required placeholder="Host" className="h-10 border border-input bg-background px-3 text-sm" />
+          <input name="port" type="number" defaultValue={3101} className="h-10 w-24 border border-input bg-background px-3 text-sm" />
+          <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground">Register</button>
+        </form>
+        {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
+        {token && <p className="mt-3 break-all font-mono text-xs">Set this as DBASE_MAINTENANCE_KEY on the slave. It is not shown again: {token}</p>}
+      </Panel>
+    </div>
+  );
+}
+
 export function EnvironmentsPage({ role }: { role: string }) {
   const queryClient = useQueryClient();
   const environment = useEnvironment();

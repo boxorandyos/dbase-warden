@@ -18,7 +18,8 @@
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "helmet": "^8.1.0",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "ldapts": "^9.2.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

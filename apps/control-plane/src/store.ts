@@ -5,6 +5,7 @@ import bcrypt from 'bcryptjs';
 import type { EngineKind } from '@dbase-warden/engines';
 import { Catalog } from './catalog';
 import { AppError } from './errors';
+import { Identity } from './identity';
 
 export type Role = 'admin' | 'moderator' | 'viewer';
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed';
@@ -16,6 +17,10 @@ export interface PublicUser {
   role: Role;
   createdAt: string;
   environmentId?: string | null;
+  mustChangePassword?: boolean;
+  totpEnabled?: boolean;
+  email?: string;
+  authProvider?: string;
 }
 
 export interface ServerRecord {
@@ -125,9 +130,11 @@ export function credentialRef(engineId: string): string {
 
 export class Store {
   readonly catalog: Catalog;
+  readonly identity: Identity;
 
   constructor(private readonly db: DatabaseSync) {
     this.catalog = new Catalog(db);
+    this.identity = new Identity(db);
   }
 
   migrate(): void {
@@ -300,11 +307,60 @@ export class Store {
         enabled INTEGER NOT NULL,
         environment_id TEXT
       );
+      CREATE TABLE IF NOT EXISTS warden_nodes (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        host TEXT NOT NULL,
+        port INTEGER NOT NULL,
+        token TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS user_sessions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        refresh_hash TEXT NOT NULL UNIQUE,
+        expires_at TEXT NOT NULL,
+        revoked_at TEXT,
+        ip TEXT NOT NULL,
+        user_agent TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS user_totp (
+        user_id TEXT PRIMARY KEY,
+        secret TEXT NOT NULL,
+        enabled INTEGER NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS identity_providers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        type TEXT NOT NULL,
+        enabled INTEGER NOT NULL,
+        config_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS oidc_states (
+        state TEXT PRIMARY KEY,
+        provider_id TEXT NOT NULL,
+        nonce TEXT NOT NULL,
+        expires_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS config_snapshots (
+        id TEXT PRIMARY KEY,
+        actor TEXT NOT NULL,
+        body TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
     `);
     this.ensureColumn('servers', 'environment_id', 'TEXT');
     this.ensureColumn('engines', 'environment_id', 'TEXT');
     this.ensureColumn('engines', 'service_unit', "TEXT NOT NULL DEFAULT ''");
     this.ensureColumn('clusters', 'environment_id', 'TEXT');
+    this.ensureColumn('users', 'must_change_password', 'INTEGER NOT NULL DEFAULT 0');
+    this.ensureColumn('users', 'auth_provider', "TEXT NOT NULL DEFAULT 'local'");
+    this.ensureColumn('users', 'external_id', 'TEXT');
+    this.ensureColumn('users', 'email', "TEXT NOT NULL DEFAULT ''");
+    this.ensureColumn('warden_nodes', 'last_seen_at', 'TEXT');
     this.catalog.seed();
   }
 
@@ -328,7 +384,7 @@ export class Store {
     return this.createUser({ username: input.username || 'admin', password, role: 'admin' });
   }
 
-  createUser(input: { username: string; password: string; role: Role }): PublicUser {
+  createUser(input: { username: string; password: string; role: Role; mustChangePassword?: boolean; email?: string; authProvider?: string; externalId?: string }): PublicUser {
     const username = input.username.trim();
     if (!/^[A-Za-z0-9._-]{3,64}$/.test(username)) {
       throw new AppError(400, 'Username must be 3-64 characters and use letters, numbers, ., _, or -');
@@ -341,26 +397,99 @@ export class Store {
     }
     const taken = this.db.prepare('SELECT id FROM users WHERE username = ?').get(username);
     if (taken) throw new AppError(409, 'Username already exists');
+    const email = input.email ?? '';
+    const authProvider = input.authProvider ?? 'local';
     const record: PublicUser = {
       id: id(),
       username,
       role: input.role,
       createdAt: now(),
+      mustChangePassword: Boolean(input.mustChangePassword),
+      totpEnabled: false,
+      email,
+      authProvider,
     };
     this.db
-      .prepare('INSERT INTO users (id, username, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)')
-      .run(record.id, record.username, bcrypt.hashSync(input.password, 10), record.role, record.createdAt);
+      .prepare(
+        'INSERT INTO users (id, username, password_hash, role, created_at, must_change_password, auth_provider, external_id, email) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      )
+      .run(
+        record.id,
+        record.username,
+        bcrypt.hashSync(input.password, 10),
+        record.role,
+        record.createdAt,
+        record.mustChangePassword ? 1 : 0,
+        authProvider,
+        input.externalId ?? null,
+        email,
+      );
     return record;
   }
 
   verifyUser(username: string, password: string): PublicUser | null {
     const row = this.db
-      .prepare('SELECT id, username, password_hash, role, created_at FROM users WHERE username = ?')
+      .prepare(
+        `SELECT u.id, u.username, u.password_hash, u.role, u.created_at, u.must_change_password, u.email, u.auth_provider,
+                COALESCE(t.enabled, 0) AS totp_enabled
+           FROM users u LEFT JOIN user_totp t ON t.user_id = u.id WHERE u.username = ?`,
+      )
       .get(username) as
-      | { id: string; username: string; password_hash: string; role: Role; created_at: string }
+      | {
+          id: string;
+          username: string;
+          password_hash: string;
+          role: Role;
+          created_at: string;
+          must_change_password: number;
+          email: string;
+          auth_provider: string;
+          totp_enabled: number;
+        }
       | undefined;
-    if (!row || !bcrypt.compareSync(password, row.password_hash)) return null;
-    return { id: row.id, username: row.username, role: row.role, createdAt: row.created_at };
+    if (!row || !row.password_hash || !bcrypt.compareSync(password, row.password_hash)) return null;
+    return {
+      id: row.id,
+      username: row.username,
+      role: row.role,
+      createdAt: row.created_at,
+      mustChangePassword: row.must_change_password === 1,
+      totpEnabled: row.totp_enabled === 1,
+      email: row.email,
+      authProvider: row.auth_provider,
+    };
+  }
+
+  userById(userId: string): PublicUser | null {
+    const row = this.db
+      .prepare(
+        `SELECT u.id, u.username, u.role, u.created_at, u.must_change_password, u.email, u.auth_provider,
+                COALESCE(t.enabled, 0) AS totp_enabled
+           FROM users u LEFT JOIN user_totp t ON t.user_id = u.id WHERE u.id = ?`,
+      )
+      .get(userId) as
+      | {
+          id: string;
+          username: string;
+          role: Role;
+          created_at: string;
+          must_change_password: number;
+          email: string;
+          auth_provider: string;
+          totp_enabled: number;
+        }
+      | undefined;
+    if (!row) return null;
+    return {
+      id: row.id,
+      username: row.username,
+      role: row.role,
+      createdAt: row.created_at,
+      mustChangePassword: row.must_change_password === 1,
+      totpEnabled: row.totp_enabled === 1,
+      email: row.email,
+      authProvider: row.auth_provider,
+    };
   }
 
   listUsers(): PublicUser[] {
