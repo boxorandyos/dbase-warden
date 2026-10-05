@@ -3,12 +3,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, AuditRecord, ClusterRecord, ConnectorInfo, EngineRecord, getToken, JobRecord, ServerRecord } from './api';
 import { StatusDot } from './chrome';
 import { inEnvironment, useEnvironment } from './env';
+import { useI18n } from './i18n';
 
 function canWrite(role: string): boolean {
   return role === 'admin' || role === 'moderator';
 }
 
 export function DashboardPage() {
+  const { t } = useI18n();
   const environment = useEnvironment();
   const servers = useQuery({ queryKey: ['servers'], queryFn: () => api<ServerRecord[]>('/api/v1/servers') });
   const engines = useQuery({ queryKey: ['engines'], queryFn: () => api<EngineRecord[]>('/api/v1/engines') });
@@ -23,23 +25,23 @@ export function DashboardPage() {
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-4">
-        <Stat label="Servers" value={servers.isSuccess ? serverRows.length : undefined} />
-        <Stat label="Engines" value={engines.isSuccess ? engineRows.length : undefined} />
-        <Stat label="Healthy" value={engines.isSuccess ? healthy : undefined} />
-        <Stat label="Firing alerts" value={alerts.isSuccess ? firing : undefined} />
+        <Stat label={t("Servers")} value={servers.isSuccess ? serverRows.length : undefined} />
+        <Stat label={t("Engines")} value={engines.isSuccess ? engineRows.length : undefined} />
+        <Stat label={t("Healthy")} value={engines.isSuccess ? healthy : undefined} />
+        <Stat label={t("Firing alerts")} value={alerts.isSuccess ? firing : undefined} />
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card title="Connectors">
+        <Card title={t("Connectors")}>
           <ul className="divide-y divide-border">
             {connectors.data?.map((connector) => (
               <li key={connector.kind} className="flex items-center justify-between py-3 text-sm">
                 <span className="font-medium capitalize">{connector.kind}</span>
-                <Badge tone={connector.implemented ? 'ok' : 'muted'}>{connector.implemented ? 'Ready' : 'Registered'}</Badge>
+                <Badge tone={connector.implemented ? 'ok' : 'muted'}>{connector.implemented ? t("Ready") : t("Registered")}</Badge>
               </li>
             ))}
           </ul>
         </Card>
-        <Card title="Recent jobs">
+        <Card title={t("Recent jobs")}>
           <JobList jobs={jobs.data?.slice(0, 5) ?? []} />
         </Card>
       </div>
@@ -47,7 +49,9 @@ export function DashboardPage() {
   );
 }
 
-export function ServersPage({ role }: { role: string }) {
+export function ServersPage({
+  role }: { role: string }) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const environment = useEnvironment();
   const servers = useQuery({ queryKey: ['servers'], queryFn: () => api<ServerRecord[]>('/api/v1/servers') });
@@ -74,15 +78,15 @@ export function ServersPage({ role }: { role: string }) {
 
   return (
     <div className="space-y-4">
-      <Toolbar title="Registered hosts" action={canWrite(role) ? 'Register server' : undefined} onAction={() => setOpen(true)} />
+      <Toolbar title={t("Registered hosts")} action={canWrite(role) ? t("Register server") : undefined} onAction={() => setOpen(true)} />
       <Card>
         <table className="w-full text-sm">
           <thead className="text-left text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
             <tr>
-              <th className="py-2">Name</th>
-              <th>Hostname</th>
-              <th>SSH</th>
-              <th>Notes</th>
+              <th className="py-2">{t("Name")}</th>
+              <th>{t("Hostname")}</th>
+              <th>{t("SSH")}</th>
+              <th>{t("Notes")}</th>
             </tr>
           </thead>
           <tbody>
@@ -95,7 +99,7 @@ export function ServersPage({ role }: { role: string }) {
                 <td className="text-right">
                   {canWrite(role) && (
                     <button className="border border-foreground/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]" onClick={() => sync.mutate(server.id)}>
-                      Sync
+                      {t("Sync")}
                     </button>
                   )}
                 </td>
@@ -103,10 +107,10 @@ export function ServersPage({ role }: { role: string }) {
             ))}
           </tbody>
         </table>
-        {rows.length === 0 && <Empty label="No servers registered yet." />}
+        {rows.length === 0 && <Empty label={t("No servers registered yet.")} />}
       </Card>
       {open && (
-        <Modal title="Register server" onClose={() => setOpen(false)}>
+        <Modal title={t("Register server")} onClose={() => setOpen(false)}>
           <ServerForm
             error={error}
             pending={create.isPending}
@@ -121,7 +125,9 @@ export function ServersPage({ role }: { role: string }) {
   );
 }
 
-export function EnginesPage({ role }: { role: string }) {
+export function EnginesPage({
+  role }: { role: string }) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const environment = useEnvironment();
   const engines = useQuery({ queryKey: ['engines'], queryFn: () => api<EngineRecord[]>('/api/v1/engines') });
@@ -146,7 +152,7 @@ export function EnginesPage({ role }: { role: string }) {
     mutationFn: (id: string) => api(`/api/v1/engines/${id}/health`, { method: 'POST' }),
     onSuccess: async () => {
       setActionError('');
-      setNotice('Health recorded');
+      setNotice(t("Health recorded"));
       await queryClient.invalidateQueries({ queryKey: ['engines'] });
       await queryClient.invalidateQueries({ queryKey: ['jobs'] });
     },
@@ -163,7 +169,7 @@ export function EnginesPage({ role }: { role: string }) {
     onSuccess: async (record) => {
       setRotateId(null);
       setActionError('');
-      setNotice(jobNotice(record));
+      setNotice(jobNotice(record, t));
       await queryClient.invalidateQueries({ queryKey: ['jobs'] });
       await queryClient.invalidateQueries({ queryKey: ['alerts'] });
       await queryClient.invalidateQueries({ queryKey: ['backups'] });
@@ -179,18 +185,18 @@ export function EnginesPage({ role }: { role: string }) {
 
   return (
     <div className="space-y-4">
-      <Toolbar title="Engine instances" action={canWrite(role) ? 'Add engine' : undefined} onAction={() => setOpen(true)} />
+      <Toolbar title={t("Engine instances")} action={canWrite(role) ? t("Add engine") : undefined} onAction={() => setOpen(true)} />
       {notice && <p className="text-sm text-muted-foreground">{notice}</p>}
       {actionError && <p className="text-sm text-destructive">{actionError}</p>}
       <Card>
         <table className="w-full text-sm">
           <thead className="text-left text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
             <tr>
-              <th className="py-2">Name</th>
-              <th>Kind</th>
-              <th>Endpoint</th>
-              <th>Version</th>
-              <th>Health</th>
+              <th className="py-2">{t("Name")}</th>
+              <th>{t("Kind")}</th>
+              <th>{t("Endpoint")}</th>
+              <th>{t("Version")}</th>
+              <th>{t("Health")}</th>
               <th></th>
             </tr>
           </thead>
@@ -206,7 +212,7 @@ export function EnginesPage({ role }: { role: string }) {
                 <td>
                   <span className="inline-flex items-center gap-2">
                     <StatusDot ok={engine.lastHealth ? engine.lastHealth.ok : null} />
-                    {engine.lastHealth ? (engine.lastHealth.ok ? engine.lastHealth.role ?? 'ok' : 'failed') : 'unknown'}
+                    {engine.lastHealth ? (engine.lastHealth.ok ? engine.lastHealth.role ?? 'ok' : t('failed')) : t('unknown')}
                   </span>
                 </td>
                 <td className="text-right">
@@ -219,7 +225,7 @@ export function EnginesPage({ role }: { role: string }) {
                           onClick={() => (type === 'engine.health' ? probe.mutate(engine.id) : job.mutate({ type, engineId: engine.id }))}
                           disabled={probe.isPending || job.isPending}
                         >
-                          {engineActionLabel(type)}
+                          {engineActionLabel(type, t)}
                         </button>
                       ))}
                       {engine.serviceUnit &&
@@ -230,7 +236,7 @@ export function EnginesPage({ role }: { role: string }) {
                             onClick={() => job.mutate({ type: 'engine.control', engineId: engine.id, action })}
                             disabled={job.isPending}
                           >
-                            {action}
+                            {t(action)}
                           </button>
                         ))}
                       {role === 'admin' && (
@@ -238,7 +244,7 @@ export function EnginesPage({ role }: { role: string }) {
                           className="border border-foreground/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
                           onClick={() => setRotateId(engine.id)}
                         >
-                          Rotate
+                          {t("Rotate")}
                         </button>
                       )}
                     </div>
@@ -248,10 +254,10 @@ export function EnginesPage({ role }: { role: string }) {
             ))}
           </tbody>
         </table>
-        {rows.length === 0 && <Empty label="No engine instances yet." />}
+        {rows.length === 0 && <Empty label={t("No engine instances yet.")} />}
       </Card>
       {open && (
-        <Modal title="Add engine" onClose={() => setOpen(false)}>
+        <Modal title={t("Add engine")} onClose={() => setOpen(false)}>
           <EngineForm
             error={error}
             pending={create.isPending}
@@ -263,7 +269,7 @@ export function EnginesPage({ role }: { role: string }) {
         </Modal>
       )}
       {rotateId && (
-        <Modal title="Rotate password" onClose={() => setRotateId(null)}>
+        <Modal title={t("Rotate password")} onClose={() => setRotateId(null)}>
           <form
             onSubmit={(event: FormEvent<HTMLFormElement>) => {
               event.preventDefault();
@@ -278,17 +284,17 @@ export function EnginesPage({ role }: { role: string }) {
               });
             }}
           >
-            <Field label="New password">
+            <Field label={t("New password")}>
               <input name="password" type="password" required minLength={8} className={inputClass} />
             </Field>
             <label className="mb-4 flex items-center gap-2 text-sm">
               <input name="apply" type="checkbox" />
-              Apply on the engine
+              {t("Apply on the engine")}
             </label>
-            <p className="mb-3 text-xs text-muted-foreground">Apply runs ALTER ROLE or ALTER USER. Leaving it off stores a new local secret version only.</p>
+            <p className="mb-3 text-xs text-muted-foreground">{t("Apply runs ALTER ROLE or ALTER USER. Leaving it off stores a new local secret version only.")}</p>
             {actionError && <p className="mb-3 text-sm text-destructive">{actionError}</p>}
             <button disabled={job.isPending} className="h-11 w-full bg-primary text-sm font-semibold text-primary-foreground">
-              Rotate
+              {t("Rotate")}
             </button>
           </form>
         </Modal>
@@ -297,27 +303,29 @@ export function EnginesPage({ role }: { role: string }) {
   );
 }
 
-function engineActionLabel(type: string): string {
-  if (type === 'engine.health') return 'Probe';
-  if (type === 'engine.metrics') return 'Metrics';
-  if (type === 'engine.discover') return 'Discover';
-  if (type === 'engine.validate') return 'Validate';
-  if (type === 'engine.backup') return 'Backup';
-  return 'Scan';
+function engineActionLabel(type: string, t: (key: string) => string): string {
+  if (type === 'engine.health') return t("Probe");
+  if (type === 'engine.metrics') return t("Metrics");
+  if (type === 'engine.discover') return t("Discover");
+  if (type === 'engine.validate') return t("Validate");
+  if (type === 'engine.backup') return t("Backup");
+  return t("Scan");
 }
 
-function jobNotice(record: JobRecord): string {
+function jobNotice(record: JobRecord, t: (key: string, vars?: Record<string, string | number>) => string): string {
   const result = record.result ?? {};
   if (typeof result.detail === 'string') return result.detail;
-  if (result.rotated === true) return result.applied ? 'Password applied and stored' : 'Password stored';
-  if (typeof result.backupId === 'string') return 'Backup catalog written';
-  if (Array.isArray(result.databases)) return `${result.databases.length} databases discovered`;
-  if (result.valid === true) return 'Configuration valid';
-  if (typeof result.connections === 'number') return `${result.connections} connections`;
-  return 'Completed';
+  if (result.rotated === true) return result.applied ? t("Password applied and stored") : t("Password stored");
+  if (typeof result.backupId === 'string') return t("Backup catalog written");
+  if (Array.isArray(result.databases)) return t("databases.discovered", { count: result.databases.length });
+  if (result.valid === true) return t("Configuration valid");
+  if (typeof result.connections === 'number') return t("connections.count", { count: result.connections });
+  return t("Completed");
 }
 
-export function ClustersPage({ role }: { role: string }) {
+export function ClustersPage({
+  role }: { role: string }) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const environment = useEnvironment();
   const clusters = useQuery({ queryKey: ['clusters'], queryFn: () => api<ClusterRecord[]>('/api/v1/clusters') });
@@ -362,7 +370,7 @@ export function ClustersPage({ role }: { role: string }) {
 
   return (
     <div className="space-y-4">
-      <Toolbar title="Topologies" action={canWrite(role) ? 'Create cluster' : undefined} onAction={() => setOpen(true)} />
+      <Toolbar title={t("Topologies")} action={canWrite(role) ? t("Create cluster") : undefined} onAction={() => setOpen(true)} />
       {error && <p className="text-sm text-destructive">{error}</p>}
       <div className="grid gap-4">
         {clusterRows.map((cluster) => (
@@ -384,7 +392,7 @@ export function ClustersPage({ role }: { role: string }) {
                   </span>
                 </li>
               ))}
-              {cluster.members.length === 0 && <Empty label="No members yet." />}
+              {cluster.members.length === 0 && <Empty label={t("No members yet.")} />}
             </ul>
             {canWrite(role) && (
               <MemberForm
@@ -396,12 +404,12 @@ export function ClustersPage({ role }: { role: string }) {
         ))}
         {clusterRows.length === 0 && (
           <Card>
-            <Empty label="No clusters defined yet." />
+            <Empty label={t("No clusters defined yet.")} />
           </Card>
         )}
       </div>
       {open && (
-        <Modal title="Create cluster" onClose={() => setOpen(false)}>
+        <Modal title={t("Create cluster")} onClose={() => setOpen(false)}>
           <ClusterForm
             error={error}
             pending={create.isPending}
@@ -417,16 +425,18 @@ export function ClustersPage({ role }: { role: string }) {
 }
 
 export function JobsPage() {
+  const { t } = useI18n();
   const jobs = useQuery({ queryKey: ['jobs'], queryFn: () => api<JobRecord[]>('/api/v1/jobs') });
   return (
-    <Card title="Operation history">
+    <Card title={t("Operation history")}>
       <JobList jobs={jobs.data ?? []} />
-      {jobs.data?.length === 0 && <Empty label="No jobs have run yet." />}
+      {jobs.data?.length === 0 && <Empty label={t("No jobs have run yet.")} />}
     </Card>
   );
 }
 
 export function AuditPage() {
+  const { t } = useI18n();
   const audit = useQuery({ queryKey: ['audit'], queryFn: () => api<AuditRecord[]>('/api/v1/audit') });
   async function download() {
     const response = await fetch('/api/v1/audit/export?format=csv', { headers: { Authorization: `Bearer ${getToken() ?? ''}` } });
@@ -442,17 +452,17 @@ export function AuditPage() {
     <div className="space-y-4">
       <div className="flex justify-end">
         <button className="h-10 border border-foreground/15 px-3 text-xs font-semibold uppercase tracking-[0.14em]" onClick={() => void download()}>
-          Export CSV
+          {t("Export CSV")}
         </button>
       </div>
-    <Card title="Audit log">
+    <Card title={t("Audit log")}>
       <table className="w-full text-sm">
         <thead className="text-left text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
           <tr>
-            <th className="py-2">When</th>
-            <th>Actor</th>
-            <th>Action</th>
-            <th>Detail</th>
+            <th className="py-2">{t("When")}</th>
+            <th>{t("Actor")}</th>
+            <th>{t("Action")}</th>
+            <th>{t("Detail")}</th>
           </tr>
         </thead>
         <tbody>
@@ -466,13 +476,15 @@ export function AuditPage() {
           ))}
         </tbody>
       </table>
-      {audit.data?.length === 0 && <Empty label="No audit events yet." />}
+      {audit.data?.length === 0 && <Empty label={t("No audit events yet.")} />}
     </Card>
     </div>
   );
 }
 
-export function UsersPage({ role }: { role: string }) {
+export function UsersPage({
+  role }: { role: string }) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const users = useQuery({
     queryKey: ['users'],
@@ -493,21 +505,21 @@ export function UsersPage({ role }: { role: string }) {
 
   if (role !== 'admin') {
     return (
-      <Card title="User Management">
-        <p className="text-sm text-muted-foreground">Only admins can manage operators.</p>
+      <Card title={t("User Management")}>
+        <p className="text-sm text-muted-foreground">{t("Only admins can manage operators.")}</p>
       </Card>
     );
   }
 
   return (
     <div className="space-y-4">
-      <Toolbar title="Operators" action="Add user" onAction={() => setOpen(true)} />
+      <Toolbar title={t("Operators")} action={t("Add user")} onAction={() => setOpen(true)} />
       <Card>
         <table className="w-full text-sm">
           <thead className="text-left text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
             <tr>
-              <th className="py-2">Username</th>
-              <th>Role</th>
+              <th className="py-2">{t("Username")}</th>
+              <th>{t("Role")}</th>
             </tr>
           </thead>
           <tbody>
@@ -521,7 +533,7 @@ export function UsersPage({ role }: { role: string }) {
         </table>
       </Card>
       {open && (
-        <Modal title="Add user" onClose={() => setOpen(false)}>
+        <Modal title={t("Add user")} onClose={() => setOpen(false)}>
           <UserForm
             error={error}
             pending={create.isPending}
@@ -537,6 +549,7 @@ export function UsersPage({ role }: { role: string }) {
 }
 
 export function ConnectorsPage() {
+  const { t } = useI18n();
   const connectors = useQuery({ queryKey: ['connectors'], queryFn: () => api<ConnectorInfo[]>('/api/v1/connectors') });
   return (
     <div className="grid gap-4 md:grid-cols-3">
@@ -544,11 +557,11 @@ export function ConnectorsPage() {
         <Card key={connector.kind} title={connector.kind}>
           <p className="text-sm text-muted-foreground">
             {connector.implemented
-              ? 'Reference connector. Health, discovery, and config validation run against a live instance.'
-              : 'Plugin is registered in the lifecycle and will reject probes until an implementation lands.'}
+              ? t("Reference connector. Health, discovery, and config validation run against a live instance.")
+              : t("Plugin is registered in the lifecycle and will reject probes until an implementation lands.")}
           </p>
           <div className="mt-4">
-            <Badge tone={connector.implemented ? 'ok' : 'muted'}>{connector.implemented ? 'Implemented' : 'Placeholder'}</Badge>
+            <Badge tone={connector.implemented ? 'ok' : 'muted'}>{connector.implemented ? t("Implemented") : t("Placeholder")}</Badge>
           </div>
         </Card>
       ))}
@@ -556,7 +569,8 @@ export function ConnectorsPage() {
   );
 }
 
-function JobList({ jobs }: { jobs: JobRecord[] }) {
+function JobList({
+  jobs }: { jobs: JobRecord[] }) {
   if (jobs.length === 0) return null;
   return (
     <ul className="divide-y divide-border text-sm">
@@ -614,13 +628,14 @@ function Toolbar({ title, action, onAction }: { title: string; action?: string; 
 }
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  const { t } = useI18n();
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-foreground/40 p-4">
       <div role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-md border border-border bg-card p-6">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-sm font-semibold uppercase tracking-[0.16em]">{title}</h3>
           <button onClick={onClose} className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
-            Close
+            {t("Close")}
           </button>
         </div>
         {children}
@@ -649,6 +664,7 @@ function ServerForm({
   error: string;
   pending: boolean;
 }) {
+  const { t } = useI18n();
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -660,18 +676,18 @@ function ServerForm({
   }
   return (
     <form onSubmit={submit}>
-      <Field label="Name">
+      <Field label={t("Name")}>
         <input name="name" required className={inputClass} />
       </Field>
-      <Field label="Hostname">
+      <Field label={t("Hostname")}>
         <input name="hostname" required className={inputClass} />
       </Field>
-      <Field label="Description">
+      <Field label={t("Description")}>
         <input name="description" className={inputClass} />
       </Field>
       {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
       <button disabled={pending} className="h-11 w-full bg-primary text-sm font-semibold text-primary-foreground">
-        Save
+        {t("Save")}
       </button>
     </form>
   );
@@ -686,6 +702,7 @@ function EngineForm({
   error: string;
   pending: boolean;
 }) {
+  const { t } = useI18n();
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -702,37 +719,37 @@ function EngineForm({
   }
   return (
     <form onSubmit={submit}>
-      <Field label="Name">
+      <Field label={t("Name")}>
         <input name="name" required className={inputClass} />
       </Field>
-      <Field label="Kind">
+      <Field label={t("Kind")}>
         <select name="kind" className={inputClass} defaultValue="postgresql">
           <option value="postgresql">PostgreSQL</option>
           <option value="mysql">MySQL</option>
           <option value="mariadb">MariaDB</option>
         </select>
       </Field>
-      <Field label="Host">
+      <Field label={t("Host")}>
         <input name="host" required className={inputClass} />
       </Field>
-      <Field label="Port">
+      <Field label={t("Port")}>
         <input name="port" type="number" defaultValue={5432} className={inputClass} />
       </Field>
-      <Field label="Database">
+      <Field label={t("Database")}>
         <input name="databaseName" className={inputClass} />
       </Field>
-      <Field label="Username">
+      <Field label={t("Username")}>
         <input name="username" className={inputClass} />
       </Field>
-      <Field label="Password">
+      <Field label={t("Password")}>
         <input name="password" type="password" className={inputClass} />
       </Field>
-      <Field label="Service unit">
+      <Field label={t("Service unit")}>
         <input name="serviceUnit" placeholder="postgresql" className={inputClass} />
       </Field>
       {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
       <button disabled={pending} className="h-11 w-full bg-primary text-sm font-semibold text-primary-foreground">
-        Save
+        {t("Save")}
       </button>
     </form>
   );
@@ -747,6 +764,7 @@ function ClusterForm({
   error: string;
   pending: boolean;
 }) {
+  const { t } = useI18n();
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -754,10 +772,10 @@ function ClusterForm({
   }
   return (
     <form onSubmit={submit}>
-      <Field label="Name">
+      <Field label={t("Name")}>
         <input name="name" required className={inputClass} />
       </Field>
-      <Field label="Kind">
+      <Field label={t("Kind")}>
         <select name="kind" className={inputClass} defaultValue="postgresql">
           <option value="postgresql">PostgreSQL</option>
           <option value="mysql">MySQL</option>
@@ -766,13 +784,15 @@ function ClusterForm({
       </Field>
       {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
       <button disabled={pending} className="h-11 w-full bg-primary text-sm font-semibold text-primary-foreground">
-        Save
+        {t("Save")}
       </button>
     </form>
   );
 }
 
-function MemberForm({ engines, onSubmit }: { engines: EngineRecord[]; onSubmit: (engineId: string, role: string) => void }) {
+function MemberForm({
+  engines, onSubmit }: { engines: EngineRecord[]; onSubmit: (engineId: string, role: string) => void }) {
+  const { t } = useI18n();
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -793,7 +813,7 @@ function MemberForm({ engines, onSubmit }: { engines: EngineRecord[]; onSubmit: 
         <option value="replica">replica</option>
         <option value="witness">witness</option>
       </select>
-      <button className="h-10 border border-foreground/15 px-3 text-xs font-semibold uppercase tracking-[0.14em]">Add member</button>
+      <button className="h-10 border border-foreground/15 px-3 text-xs font-semibold uppercase tracking-[0.14em]">{t("Add member")}</button>
     </form>
   );
 }
@@ -807,6 +827,7 @@ function UserForm({
   error: string;
   pending: boolean;
 }) {
+  const { t } = useI18n();
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -818,13 +839,13 @@ function UserForm({
   }
   return (
     <form onSubmit={submit}>
-      <Field label="Username">
+      <Field label={t("Username")}>
         <input name="username" required className={inputClass} />
       </Field>
-      <Field label="Password">
+      <Field label={t("Password")}>
         <input name="password" type="password" required minLength={8} className={inputClass} />
       </Field>
-      <Field label="Role">
+      <Field label={t("Role")}>
         <select name="role" className={inputClass} defaultValue="viewer">
           <option value="viewer">viewer</option>
           <option value="moderator">moderator</option>
@@ -833,7 +854,7 @@ function UserForm({
       </Field>
       {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
       <button disabled={pending} className="h-11 w-full bg-primary text-sm font-semibold text-primary-foreground">
-        Save
+        {t("Save")}
       </button>
     </form>
   );

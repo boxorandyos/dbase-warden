@@ -5,76 +5,7 @@ import type { ApiUser } from './api';
 import { setToken } from './api';
 import { Brand, MenuButton, MobileNav, ThemeIcon, useTheme } from './chrome';
 import { useEnvironment } from './env';
-
-const LANGUAGE_KEY = 'dbase-warden.language';
-
-const dict = {
-  en: {
-    pulse: 'Pulse',
-    estate: 'Estate',
-    signals: 'Signals',
-    fleet: 'Fleet',
-    servers: 'Servers',
-    engines: 'Engines',
-    clusters: 'Clusters',
-    environments: 'Environments',
-    connectors: 'Connectors',
-    alerts: 'Alerts',
-    events: 'Events',
-    metrics: 'Metrics',
-    users: 'User Management',
-    serviceAccounts: 'Service Accounts',
-    identity: 'Identity',
-    nodes: 'Slave Nodes',
-    maintenance: 'Maintenance',
-    snapshots: 'Snapshots',
-    backups: 'Backups',
-    jobs: 'Jobs',
-    runbooks: 'Runbooks',
-    hardening: 'Hardening',
-    audit: 'Audit',
-    account: 'Account',
-  },
-  de: {
-    pulse: 'Pulse',
-    estate: 'Estate',
-    signals: 'Signals',
-    fleet: 'Fleet',
-    servers: 'Server',
-    engines: 'Engines',
-    clusters: 'Cluster',
-    environments: 'Umgebungen',
-    connectors: 'Konnektoren',
-    alerts: 'Warnmeldungen',
-    events: 'Ereignisse',
-    metrics: 'Metriken',
-    users: 'Benutzerverwaltung',
-    serviceAccounts: 'Dienstkonten',
-    identity: 'Identität',
-    nodes: 'Slave-Knoten',
-    maintenance: 'Wartung',
-    snapshots: 'Snapshots',
-    backups: 'Sicherungen',
-    jobs: 'Aufträge',
-    runbooks: 'Runbooks',
-    hardening: 'Härtung',
-    audit: 'Audit',
-    account: 'Konto',
-  },
-} as const;
-
-type Lang = keyof typeof dict;
-type LabelKey = keyof typeof dict.en;
-
-function useLang() {
-  const [lang, setLang] = useState<Lang>(() => (localStorage.getItem(LANGUAGE_KEY) === 'de' ? 'de' : 'en'));
-  function toggle() {
-    const next: Lang = lang === 'en' ? 'de' : 'en';
-    localStorage.setItem(LANGUAGE_KEY, next);
-    setLang(next);
-  }
-  return { lang, toggle, t: (key: LabelKey) => dict[lang][key] };
-}
+import { useI18n } from './i18n';
 
 const sections = [
   { id: 'pulse', label: 'pulse', path: '/dashboard' },
@@ -117,7 +48,7 @@ const sections = [
   },
 ] as const;
 
-const titles: Record<string, LabelKey> = {
+const titles: Record<string, string> = {
   dashboard: 'pulse',
   servers: 'servers',
   engines: 'engines',
@@ -145,12 +76,12 @@ export function Shell({ user, children }: { user: ApiUser; children: ReactNode }
   const location = useLocation();
   const navigate = useNavigate();
   const [dark, toggleTheme] = useTheme();
-  const { lang, toggle, t } = useLang();
+  const { lang, toggle, t } = useI18n();
   const [mobile, setMobile] = useState(false);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const environment = useEnvironment();
   const segment = location.pathname.split('/').filter(Boolean)[0] ?? 'dashboard';
-  const title = t(titles[segment] ?? 'pulse');
+  const title = t(`nav.${titles[segment] ?? 'pulse'}`);
 
   function logout() {
     setToken(null);
@@ -169,7 +100,7 @@ export function Shell({ user, children }: { user: ApiUser; children: ReactNode }
             onClick={() => setMobile(false)}
             className={({ isActive }) => navClass(isActive)}
           >
-            {t(section.label)}
+            {t(`nav.${section.label}`)}
           </NavLink>
         ) : (
           <div
@@ -182,12 +113,12 @@ export function Shell({ user, children }: { user: ApiUser; children: ReactNode }
               className={navClass(section.items.some((item) => location.pathname.startsWith(item.path)))}
               onClick={() => setOpenMenu(openMenu === section.id ? null : section.id)}
             >
-              {t(section.label)}
+              {t(`nav.${section.label}`)}
             </button>
             {openMenu === section.id && (
               <div className="z-40 min-w-[12rem] border border-foreground/10 bg-popover p-1 md:absolute md:left-0 md:top-full">
                 <div className="border-b border-border px-3 py-2 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-                  {t(section.label)}
+                  {t(`nav.${section.label}`)}
                 </div>
                 {section.items.filter((item) => !adminOnly.has(item.path)).map((item) => {
                   const Icon = item.icon;
@@ -204,7 +135,7 @@ export function Shell({ user, children }: { user: ApiUser; children: ReactNode }
                       }
                     >
                       <Icon className="h-4 w-4 opacity-70" />
-                      {t(item.label)}
+                      {t(`nav.${item.label}`)}
                     </NavLink>
                   );
                 })}
@@ -226,7 +157,7 @@ export function Shell({ user, children }: { user: ApiUser; children: ReactNode }
           <div className="ml-auto flex items-center gap-2">
             {environment.environments.length > 0 && (
               <select
-                aria-label="Environment"
+                aria-label={t('aria.environment')}
                 className="h-10 border border-foreground/15 bg-background px-2 text-xs uppercase tracking-[0.14em]"
                 value={environment.id}
                 onChange={(event) => environment.setId(event.target.value)}
@@ -238,20 +169,20 @@ export function Shell({ user, children }: { user: ApiUser; children: ReactNode }
                 ))}
               </select>
             )}
-            <button className="border border-transparent px-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground hover:text-foreground" onClick={toggle} aria-label="Language">
+            <button className="border border-transparent px-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground hover:text-foreground" onClick={toggle} aria-label={t('aria.language')}>
               {lang === 'en' ? 'DE' : 'EN'}
             </button>
-            <button className="border border-transparent p-2 text-muted-foreground hover:text-foreground" onClick={toggleTheme} aria-label="Toggle theme">
+            <button className="border border-transparent p-2 text-muted-foreground hover:text-foreground" onClick={toggleTheme} aria-label={t('aria.theme')}>
               <ThemeIcon dark={dark} />
             </button>
-            <button className="border border-transparent p-2 text-muted-foreground hover:text-foreground" onClick={() => navigate('/account')} aria-label={t('account')}>
+            <button className="border border-transparent p-2 text-muted-foreground hover:text-foreground" onClick={() => navigate('/account')} aria-label={t('nav.account')}>
               <UserRound className="h-4 w-4" />
             </button>
             <div className="hidden text-right sm:block">
               <div className="text-xs font-semibold">{user.username}</div>
               <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">{user.role}</div>
             </div>
-            <button className="border border-transparent p-2 text-muted-foreground hover:text-foreground" onClick={logout} aria-label="Log out">
+            <button className="border border-transparent p-2 text-muted-foreground hover:text-foreground" onClick={logout} aria-label={t('aria.logout')}>
               <LogOut className="h-4 w-4" />
             </button>
           </div>

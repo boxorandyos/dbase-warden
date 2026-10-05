@@ -9,8 +9,10 @@ import { Shell } from './shell';
 import { AuditPage, ClustersPage, ConnectorsPage, DashboardPage, EnginesPage, JobsPage, ServersPage, UsersPage } from './pages';
 import { AccountsPage, AlertsPage, BackupsPage, EnvironmentsPage, EventsPage, FindingsPage, MaintenancePage, NodesPage, RunbooksPage } from './platform';
 import { AccountPage, IdentityPage, MetricsPage, PasswordChange, SnapshotsPage } from './parity';
+import { useI18n } from './i18n';
 
 export function App() {
+  const { t } = useI18n();
   const token = getToken();
   const me = useQuery({
     queryKey: ['me', token],
@@ -28,7 +30,7 @@ export function App() {
   }
 
   if (me.isLoading) {
-    return <div className="grid min-h-screen place-items-center text-xs uppercase tracking-[0.2em] text-muted-foreground">Loading</div>;
+    return <div className="grid min-h-screen place-items-center text-xs uppercase tracking-[0.2em] text-muted-foreground">{t('common.loading')}</div>;
   }
 
   if (!me.data) {
@@ -78,6 +80,7 @@ export function App() {
 }
 
 function LoginPage() {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const location = useLocation();
   const [username, setUsername] = useState('admin');
@@ -89,7 +92,7 @@ function LoginPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    if (params.get('error')) setError('Sign-in failed');
+    if (params.get('error')) setError(t('login.failed'));
     if (params.get('challenge')) setChallenge(params.get('challenge') || '');
     const hash = new URLSearchParams(location.hash.replace(/^#/, ''));
     const access = hash.get('accessToken');
@@ -126,7 +129,7 @@ function LoginPage() {
       navigate('/dashboard', { replace: true });
       window.location.assign('/dashboard');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sign-in failed');
+      setError(err instanceof Error ? err.message : t('login.failed'));
     } finally {
       setPending(false);
     }
@@ -140,28 +143,26 @@ function LoginPage() {
           <Brand inverted />
         </div>
         <div className="relative max-w-md">
-          <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-teal-200">Dbase Warden</p>
-          <h1 className="mt-3 font-display text-4xl font-semibold tracking-tight">Control plane for your data</h1>
-          <p className="mt-4 text-sm leading-6 text-slate-200">
-            Inventory, health, and auditable operations for PostgreSQL, MySQL, and MariaDB — from a single node to a cluster.
-          </p>
+          <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-teal-200">{t('login.badge')}</p>
+          <h1 className="mt-3 font-display text-4xl font-semibold tracking-tight">{t('login.hero')}</h1>
+          <p className="mt-4 text-sm leading-6 text-slate-200">{t('login.lead')}</p>
           <ul className="mt-8 space-y-3 text-sm">
-            {['Same console rhythm as the Warden family', 'Connector lifecycle with a PostgreSQL probe', 'Jobs and audit trail on every change'].map((item) => (
+            {['login.point1', 'login.point2', 'login.point3'].map((item) => (
               <li key={item} className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-teal-300" />
-                {item}
+                {t(item)}
               </li>
             ))}
           </ul>
         </div>
-        <p className="relative text-[10px] font-bold uppercase tracking-[0.22em] text-slate-300">Management · Monitoring · Security</p>
+        <p className="relative text-[10px] font-bold uppercase tracking-[0.22em] text-slate-300">{t('login.footer')}</p>
       </section>
       <section className="flex flex-1 items-center justify-center bg-background px-6 py-12">
         <form onSubmit={onSubmit} className="w-full max-w-md border border-border bg-card p-8 shadow-2xl shadow-primary/5">
-          <h2 className="font-display text-2xl font-semibold">Dbase Warden</h2>
-          <p className="mt-2 text-sm text-muted-foreground">Sign in to manage database infrastructure.</p>
+          <h2 className="font-display text-2xl font-semibold">{t('login.badge')}</h2>
+          <p className="mt-2 text-sm text-muted-foreground">{t('login.subtitle')}</p>
           <label className="mt-6 block text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Username
+            {t('login.username')}
             <input
               className="mt-2 h-11 w-full border border-input bg-background px-3 text-sm font-normal normal-case tracking-normal text-foreground outline-none focus:border-ring"
               value={username}
@@ -170,7 +171,7 @@ function LoginPage() {
             />
           </label>
           <label className="mt-4 block text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Password
+            {t('login.password')}
             <input
               type="password"
               className="mt-2 h-11 w-full border border-input bg-background px-3 text-sm font-normal normal-case tracking-normal text-foreground outline-none focus:border-ring"
@@ -181,7 +182,7 @@ function LoginPage() {
           </label>
           {challenge && (
             <label className="mt-4 block text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Authentication code
+              {t('login.code')}
               <input
                 className="mt-2 h-11 w-full border border-input bg-background px-3 text-sm font-normal normal-case tracking-normal text-foreground outline-none focus:border-ring"
                 value={code}
@@ -197,7 +198,7 @@ function LoginPage() {
             disabled={pending}
             className="mt-6 h-11 w-full bg-primary text-sm font-semibold text-primary-foreground shadow-md shadow-primary/15 disabled:opacity-60"
           >
-            {pending ? 'Signing in' : 'Sign in'}
+            {pending ? t('login.pending') : t('login.submit')}
           </button>
         </form>
       </section>

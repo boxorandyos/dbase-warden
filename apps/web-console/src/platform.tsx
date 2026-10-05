@@ -2,6 +2,7 @@ import { FormEvent, ReactNode, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './api';
 import { useEnvironment } from './env';
+import { useI18n } from './i18n';
 
 interface AlertRule {
   id: string;
@@ -70,7 +71,9 @@ function canWrite(role: string): boolean {
   return role === 'admin' || role === 'moderator';
 }
 
-export function AlertsPage({ role }: { role: string }) {
+export function AlertsPage({
+  role }: { role: string }) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const rules = useQuery({ queryKey: ['alert-rules'], queryFn: () => api<AlertRule[]>('/api/v1/alerts/rules') });
   const alerts = useQuery({ queryKey: ['alerts'], queryFn: () => api<AlertEvent[]>('/api/v1/alerts') });
@@ -93,8 +96,8 @@ export function AlertsPage({ role }: { role: string }) {
   });
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <Panel title="Firing">
-        {firing.length === 0 && <Empty label="No firing alerts." />}
+      <Panel title={t("Firing")}>
+        {firing.length === 0 && <Empty label={t("No firing alerts.")} />}
         <ul className="divide-y divide-border text-sm">
           {firing.map((alert) => (
             <li key={alert.id} className="py-3">
@@ -104,7 +107,7 @@ export function AlertsPage({ role }: { role: string }) {
           ))}
         </ul>
       </Panel>
-      <Panel title="Rules">
+      <Panel title={t("Rules")}>
         <ul className="divide-y divide-border text-sm">
           {rules.data?.map((rule) => (
             <li key={rule.id} className="flex items-center justify-between gap-3 py-3">
@@ -118,7 +121,7 @@ export function AlertsPage({ role }: { role: string }) {
                     className="border border-foreground/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
                     onClick={() => toggle.mutate(rule)}
                   >
-                    {rule.enabled ? 'Disable' : 'Enable'}
+                    {rule.enabled ? t("Disable") : t("Enable")}
                   </button>
                 )}
               </span>
@@ -140,7 +143,7 @@ export function AlertsPage({ role }: { role: string }) {
               event.currentTarget.reset();
             }}
           >
-            <input name="name" required placeholder="Name" className="h-10 border border-input bg-background px-3 text-sm" />
+            <input name="name" required placeholder={t("Name")} className="h-10 border border-input bg-background px-3 text-sm" />
             <select name="kind" className="h-10 border border-input bg-background px-2 text-sm" defaultValue="connections">
               <option value="availability">availability</option>
               <option value="backup_age">backup_age</option>
@@ -149,8 +152,8 @@ export function AlertsPage({ role }: { role: string }) {
               <option value="connections">connections</option>
               <option value="replication_lag">replication_lag</option>
             </select>
-            <input name="threshold" type="number" min={0} required placeholder="Threshold" className="h-10 w-28 border border-input bg-background px-3 text-sm" />
-            <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground">Add rule</button>
+            <input name="threshold" type="number" min={0} required placeholder={t("Threshold")} className="h-10 w-28 border border-input bg-background px-3 text-sm" />
+            <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground">{t("Add rule")}</button>
           </form>
         )}
         {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
@@ -159,7 +162,9 @@ export function AlertsPage({ role }: { role: string }) {
   );
 }
 
-export function BackupsPage({ role }: { role: string }) {
+export function BackupsPage({
+  role }: { role: string }) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const backups = useQuery({ queryKey: ['backups'], queryFn: () => api<BackupRecord[]>('/api/v1/backups') });
   const [notice, setNotice] = useState('');
@@ -172,14 +177,14 @@ export function BackupsPage({ role }: { role: string }) {
     onSuccess: async (job) => {
       const verified = job.result?.verified === true;
       const restored = job.result?.restored === true;
-      setNotice(verified && !restored ? 'Catalog verified. Data files were not replayed.' : 'Restore job finished.');
+      setNotice(verified && !restored ? t(t("Catalog verified. Data files were not replayed.")) : t(t("Restore job finished.")));
       await queryClient.invalidateQueries({ queryKey: ['jobs'] });
     },
     onError: (err: Error) => setNotice(err.message),
   });
   return (
-    <Panel title="Catalog backups">
-      <p className="mb-3 text-sm text-muted-foreground">Each backup is a manifest of databases and sizes. Verify checks that manifest. It does not replay data files.</p>
+    <Panel title={t("Catalog backups")}>
+      <p className="mb-3 text-sm text-muted-foreground">{t("Each backup is a manifest of databases and sizes. Verify checks that manifest. It does not replay data files.")}</p>
       {notice && <p className="mb-3 text-sm text-muted-foreground">{notice}</p>}
       <table className="w-full text-sm">
         <tbody>
@@ -195,7 +200,7 @@ export function BackupsPage({ role }: { role: string }) {
                     onClick={() => verify.mutate(backup)}
                     disabled={verify.isPending}
                   >
-                    Verify
+                    {t("Verify")}
                   </button>
                 )}
               </td>
@@ -203,12 +208,14 @@ export function BackupsPage({ role }: { role: string }) {
           ))}
         </tbody>
       </table>
-      {backups.data?.length === 0 && <Empty label="No backups yet. Run one from an engine." />}
+      {backups.data?.length === 0 && <Empty label={t("No backups yet. Run one from an engine.")} />}
     </Panel>
   );
 }
 
-export function FindingsPage({ role }: { role: string }) {
+export function FindingsPage({
+  role }: { role: string }) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const findings = useQuery({ queryKey: ['findings'], queryFn: () => api<Finding[]>('/api/v1/findings') });
   const policies = useQuery({ queryKey: ['policies'], queryFn: () => api<PolicyRecord[]>('/api/v1/policies') });
@@ -237,8 +244,8 @@ export function FindingsPage({ role }: { role: string }) {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <div className="space-y-4">
-        <Panel title="Policy violations">
-          {violations.data?.length === 0 && <Empty label="No policy violations." />}
+        <Panel title={t("Policy violations")}>
+          {violations.data?.length === 0 && <Empty label={t("No policy violations.")} />}
           <ul className="divide-y divide-border text-sm">
             {violations.data?.map((item, index) => (
               <li key={`${item.engineId}-${index}`} className="py-3">
@@ -248,7 +255,7 @@ export function FindingsPage({ role }: { role: string }) {
             ))}
           </ul>
         </Panel>
-        <Panel title="Policies">
+        <Panel title={t("Policies")}>
           <ul className="divide-y divide-border text-sm">
             {policies.data?.map((policy) => (
               <li key={policy.id} className="flex items-center justify-between gap-3 py-3">
@@ -260,7 +267,7 @@ export function FindingsPage({ role }: { role: string }) {
                       className="border border-foreground/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
                       onClick={() => toggle.mutate(policy)}
                     >
-                      {policy.enabled ? 'Disable' : 'Enable'}
+                      {policy.enabled ? t("Disable") : t("Enable")}
                     </button>
                   )}
                 </span>
@@ -283,20 +290,20 @@ export function FindingsPage({ role }: { role: string }) {
                 event.currentTarget.reset();
               }}
             >
-              <input name="name" required placeholder="Name" className="h-10 border border-input bg-background px-3 text-sm" />
+              <input name="name" required placeholder={t("Name")} className="h-10 border border-input bg-background px-3 text-sm" />
               <select name="kind" className="h-10 border border-input bg-background px-2 text-sm" defaultValue="require_ssl">
                 <option value="require_ssl">require_ssl</option>
                 <option value="limit_superusers">limit_superusers</option>
               </select>
-              <input name="threshold" type="number" min={0} placeholder="Threshold" className="h-10 w-28 border border-input bg-background px-3 text-sm" />
-              <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground">Add policy</button>
+              <input name="threshold" type="number" min={0} placeholder={t("Threshold")} className="h-10 w-28 border border-input bg-background px-3 text-sm" />
+              <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground">{t("Add policy")}</button>
             </form>
           )}
           {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
         </Panel>
       </div>
-      <Panel title="Latest checks">
-        {findings.data?.length === 0 && <Empty label="Run a hardening scan from an engine." />}
+      <Panel title={t("Latest checks")}>
+        {findings.data?.length === 0 && <Empty label={t("Run a hardening scan from an engine.")} />}
         <ul className="divide-y divide-border text-sm">
           {findings.data?.map((finding) => (
             <li key={finding.id} className="flex items-center justify-between py-3">
@@ -310,7 +317,9 @@ export function FindingsPage({ role }: { role: string }) {
   );
 }
 
-export function EventsPage({ role }: { role: string }) {
+export function EventsPage({
+  role }: { role: string }) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const events = useQuery({ queryKey: ['events'], queryFn: () => api<StreamEvent[]>('/api/v1/events') });
   const [error, setError] = useState('');
@@ -324,7 +333,7 @@ export function EventsPage({ role }: { role: string }) {
     onError: (err: Error) => setError(err.message),
   });
   return (
-    <Panel title="Event stream">
+    <Panel title={t("Event stream")}>
       <ul className="divide-y divide-border text-sm">
         {events.data?.map((event) => (
           <li key={event.id} className="py-3">
@@ -336,7 +345,7 @@ export function EventsPage({ role }: { role: string }) {
           </li>
         ))}
       </ul>
-      {events.data?.length === 0 && <Empty label="Jobs and recorded events land here." />}
+      {events.data?.length === 0 && <Empty label={t("Jobs and recorded events land here.")} />}
       {canWrite(role) && (
         <form
           className="mt-4 flex flex-wrap gap-2"
@@ -353,14 +362,14 @@ export function EventsPage({ role }: { role: string }) {
             event.currentTarget.reset();
           }}
         >
-          <input name="source" required placeholder="Source" className="h-10 border border-input bg-background px-3 text-sm" />
+          <input name="source" required placeholder={t("Source")} className="h-10 border border-input bg-background px-3 text-sm" />
           <select name="severity" className="h-10 border border-input bg-background px-2 text-sm" defaultValue="info">
             <option value="info">info</option>
             <option value="warning">warning</option>
             <option value="critical">critical</option>
           </select>
-          <input name="message" required placeholder="Message" className="h-10 min-w-48 flex-1 border border-input bg-background px-3 text-sm" />
-          <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground">Record</button>
+          <input name="message" required placeholder={t("Message")} className="h-10 min-w-48 flex-1 border border-input bg-background px-3 text-sm" />
+          <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground">{t("Record")}</button>
         </form>
       )}
       {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
@@ -368,7 +377,9 @@ export function EventsPage({ role }: { role: string }) {
   );
 }
 
-export function RunbooksPage({ role }: { role: string }) {
+export function RunbooksPage({
+  role }: { role: string }) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const environment = useEnvironment();
   const runbooks = useQuery({ queryKey: ['runbooks'], queryFn: () => api<Runbook[]>('/api/v1/runbooks') });
@@ -385,10 +396,10 @@ export function RunbooksPage({ role }: { role: string }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold">Disaster recovery</h2>
+        <h2 className="text-sm font-semibold">{t("Disaster recovery")}</h2>
         {role !== 'viewer' && (
           <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground" onClick={() => setOpen(true)}>
-            Add runbook
+            {t("Add runbook")}
           </button>
         )}
       </div>
@@ -400,7 +411,7 @@ export function RunbooksPage({ role }: { role: string }) {
         ))}
         {runbooks.data?.length === 0 && (
           <Panel>
-            <Empty label="No runbooks yet." />
+            <Empty label={t("No runbooks yet.")} />
           </Panel>
         )}
       </div>
@@ -415,14 +426,14 @@ export function RunbooksPage({ role }: { role: string }) {
               save.mutate({ title: String(data.get('title') ?? ''), body: String(data.get('body') ?? ''), environmentId: environment.id });
             }}
           >
-            <h3 className="mb-4 text-sm font-semibold uppercase tracking-[0.16em]">Add runbook</h3>
-            <input name="title" required placeholder="Title" className="mb-3 h-11 w-full border border-input bg-background px-3 text-sm" />
-            <textarea name="body" required placeholder="Steps" className="mb-3 h-32 w-full border border-input bg-background px-3 py-2 text-sm" />
+            <h3 className="mb-4 text-sm font-semibold uppercase tracking-[0.16em]">{t("Add runbook")}</h3>
+            <input name="title" required placeholder={t("Title")} className="mb-3 h-11 w-full border border-input bg-background px-3 text-sm" />
+            <textarea name="body" required placeholder={t("Steps")} className="mb-3 h-32 w-full border border-input bg-background px-3 py-2 text-sm" />
             {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
             <div className="flex gap-2">
-              <button className="h-11 flex-1 bg-primary text-sm font-semibold text-primary-foreground">Save</button>
+              <button className="h-11 flex-1 bg-primary text-sm font-semibold text-primary-foreground">{t("Save")}</button>
               <button type="button" className="h-11 border border-foreground/15 px-4 text-sm" onClick={() => setOpen(false)}>
-                Close
+                {t("Close")}
               </button>
             </div>
           </form>
@@ -433,6 +444,7 @@ export function RunbooksPage({ role }: { role: string }) {
 }
 
 export function AccountsPage() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const environment = useEnvironment();
   const accounts = useQuery({ queryKey: ['service-accounts'], queryFn: () => api<ServiceAccount[]>('/api/v1/service-accounts') });
@@ -456,7 +468,7 @@ export function AccountsPage() {
   });
   return (
     <div className="space-y-4">
-      <Panel title="Service accounts">
+      <Panel title={t("Service accounts")}>
         <ul className="divide-y divide-border text-sm">
           {accounts.data?.map((account) => (
             <li key={account.id} className="flex justify-between gap-3 py-3">
@@ -467,13 +479,13 @@ export function AccountsPage() {
                   className="border border-foreground/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
                   onClick={() => remove.mutate(account.id)}
                 >
-                  Delete
+                  {t("Delete")}
                 </button>
               </span>
             </li>
           ))}
         </ul>
-        {accounts.data?.length === 0 && <Empty label="No service accounts yet." />}
+        {accounts.data?.length === 0 && <Empty label={t("No service accounts yet.")} />}
         <form
           className="mt-4 flex flex-wrap gap-2"
           onSubmit={(event: FormEvent<HTMLFormElement>) => {
@@ -484,16 +496,16 @@ export function AccountsPage() {
             event.currentTarget.reset();
           }}
         >
-          <input name="name" required placeholder="name" className="h-10 border border-input bg-background px-3 text-sm" />
+          <input name="name" required placeholder={t("Name")} className="h-10 border border-input bg-background px-3 text-sm" />
           <select name="role" className="h-10 border border-input bg-background px-2 text-sm" defaultValue="viewer">
             <option value="viewer">viewer</option>
             <option value="moderator">moderator</option>
             <option value="admin">admin</option>
           </select>
-          <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground">Create</button>
+          <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground">{t("Create")}</button>
         </form>
         {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
-        {token && <p className="mt-3 break-all font-mono text-xs">Copy this token now. It is not shown again: {token}</p>}
+        {token && <p className="mt-3 break-all font-mono text-xs">{t('token.once', { token })}</p>}
       </Panel>
     </div>
   );
@@ -507,6 +519,7 @@ interface WardenNode {
 }
 
 export function NodesPage() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const nodes = useQuery({ queryKey: ['warden-nodes'], queryFn: () => api<WardenNode[]>('/api/v1/warden-nodes') });
   const [token, setToken] = useState('');
@@ -522,7 +535,7 @@ export function NodesPage() {
     onError: (err: Error) => setError(err.message),
   });
   return (
-    <Panel title="Slave nodes">
+    <Panel title={t("Slave nodes")}>
       <ul className="divide-y divide-border text-sm">
         {nodes.data?.map((node) => (
           <li key={node.id} className="flex justify-between py-3">
@@ -533,7 +546,7 @@ export function NodesPage() {
           </li>
         ))}
       </ul>
-      {nodes.data?.length === 0 && <Empty label="No slave nodes registered." />}
+      {nodes.data?.length === 0 && <Empty label={t("No slave nodes registered.")} />}
       <form
         className="mt-4 flex flex-wrap gap-2"
         onSubmit={(event: FormEvent<HTMLFormElement>) => {
@@ -548,13 +561,13 @@ export function NodesPage() {
           event.currentTarget.reset();
         }}
       >
-        <input name="name" required placeholder="Name" className="h-10 border border-input bg-background px-3 text-sm" />
-        <input name="host" required placeholder="Host" className="h-10 border border-input bg-background px-3 text-sm" />
+        <input name="name" required placeholder={t("Name")} className="h-10 border border-input bg-background px-3 text-sm" />
+        <input name="host" required placeholder={t("Host")} className="h-10 border border-input bg-background px-3 text-sm" />
         <input name="port" type="number" defaultValue={3101} className="h-10 w-24 border border-input bg-background px-3 text-sm" />
-        <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground">Register</button>
+        <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground">{t("Register")}</button>
       </form>
       {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
-      {token && <p className="mt-3 break-all font-mono text-xs">Set this as DBASE_MAINTENANCE_KEY on the slave. It is not shown again: {token}</p>}
+      {token && <p className="mt-3 break-all font-mono text-xs">{t('token.slave', { token })}</p>}
     </Panel>
   );
 }
@@ -568,6 +581,7 @@ interface RuntimeRow {
 }
 
 export function MaintenancePage() {
+  const { t } = useI18n();
   const runtimes = useQuery({ queryKey: ['runtimes'], queryFn: () => api<RuntimeRow[]>('/api/v1/maintenance/runtimes') });
   const logs = useQuery({ queryKey: ['update-log'], queryFn: () => api<{ content: string; exists: boolean }>('/api/v1/platform/logs') });
   const [notice, setNotice] = useState('');
@@ -581,39 +595,39 @@ export function MaintenancePage() {
       }),
     onSuccess: (result) => {
       setError('');
-      setNotice(result.detail || (result.results ? `${result.results.length} slaves contacted` : 'Maintenance requested'));
+      setNotice(result.detail || (result.results ? t('maintenance.slaves', { count: result.results.length }) : t('maintenance.requested')));
     },
     onError: (err: Error) => setError(err.message),
   });
   return (
     <div className="space-y-4">
-      <Panel title="This node">
+      <Panel title={t("This node")}>
         <p className="mb-3 text-sm text-muted-foreground">
-          The container image builds on Node 24, the current long-term support release. Move Node to 24 replaces Node on a host install. Update product rebuilds Dbase Warden after that. Update packages upgrades installed PostgreSQL, MySQL, and MariaDB packages. Host actions stay planned until WARDEN_ALLOW_HOST_UPDATE=1. DBASE_ALLOW_HOST_UPDATE=1 also runs them.
+          {t('maintenance.intro')}
         </p>
         <div className="flex flex-wrap gap-2">
-          <button className="h-10 border border-foreground/15 px-3 text-xs font-semibold uppercase tracking-[0.14em]" onClick={() => setPending({ path: '/api/v1/maintenance/runtime', label: 'Move Node to 24', component: 'node' })}>
-            Move Node to 24
+          <button className="h-10 border border-foreground/15 px-3 text-xs font-semibold uppercase tracking-[0.14em]" onClick={() => setPending({ path: '/api/v1/maintenance/runtime', label: t("Move Node to 24"), component: 'node' })}>
+            {t("Move Node to 24")}
           </button>
-          <button className="h-10 border border-foreground/15 px-3 text-xs font-semibold uppercase tracking-[0.14em]" onClick={() => setPending({ path: '/api/v1/maintenance/product', label: 'Update product' })}>
-            Update product
+          <button className="h-10 border border-foreground/15 px-3 text-xs font-semibold uppercase tracking-[0.14em]" onClick={() => setPending({ path: '/api/v1/maintenance/product', label: t("Update product") })}>
+            {t("Update product")}
           </button>
-          <button className="h-10 border border-foreground/15 px-3 text-xs font-semibold uppercase tracking-[0.14em]" onClick={() => setPending({ path: '/api/v1/maintenance/packages', label: 'Update packages' })}>
-            Update packages
+          <button className="h-10 border border-foreground/15 px-3 text-xs font-semibold uppercase tracking-[0.14em]" onClick={() => setPending({ path: '/api/v1/maintenance/packages', label: t("Update packages") })}>
+            {t("Update packages")}
           </button>
-          <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground" onClick={() => setPending({ path: '/api/v1/maintenance/slaves', label: 'Upgrade slaves' })}>
-            Upgrade slaves
+          <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground" onClick={() => setPending({ path: '/api/v1/maintenance/slaves', label: t("Upgrade slaves") })}>
+            {t("Upgrade slaves")}
           </button>
         </div>
         {pending && (
           <div className="mt-3 border border-foreground/15 p-3 text-sm">
-            <p>Run {pending.label}? The request stays planned until a host-update flag is set.</p>
+            <p>{t('maintenance.confirm', { label: pending.label })}</p>
             <div className="mt-2 flex gap-2">
               <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground" onClick={() => { run.mutate({ path: pending.path, component: pending.component }); setPending(null); }}>
-                Start
+                {t("Start")}
               </button>
               <button className="h-10 border border-foreground/15 px-3 text-xs font-semibold uppercase tracking-[0.14em]" onClick={() => setPending(null)}>
-                Cancel
+                {t("Cancel")}
               </button>
             </div>
           </div>
@@ -621,23 +635,25 @@ export function MaintenancePage() {
         {notice && <p className="mt-3 text-sm text-muted-foreground">{notice}</p>}
         {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
       </Panel>
-      <Panel title="Runtime versions">
+      <Panel title={t("Runtime versions")}>
         {runtimes.data?.map((row) => (
           <div key={row.id} className="border-b border-border py-3 text-sm">
             <div className="font-medium">{row.id}</div>
-            <p className="text-muted-foreground">Running {row.current}. New install {row.newInstall}. Latest long-term line {row.latestLts}.</p>
+            <p className="text-muted-foreground">{t('maintenance.running', { current: row.current, next: row.newInstall, latest: row.latestLts })}</p>
             <p className="mt-1 text-muted-foreground">{row.note}</p>
           </div>
         ))}
       </Panel>
-      <Panel title="Update log">
-        <pre className="max-h-64 overflow-auto text-xs">{logs.data?.exists ? logs.data.content : 'No update log yet.'}</pre>
+      <Panel title={t("Update log")}>
+        <pre className="max-h-64 overflow-auto text-xs">{logs.data?.exists ? logs.data.content : t("No update log yet.")}</pre>
       </Panel>
     </div>
   );
 }
 
-export function EnvironmentsPage({ role }: { role: string }) {
+export function EnvironmentsPage({
+  role }: { role: string }) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const environment = useEnvironment();
   const [error, setError] = useState('');
@@ -649,12 +665,12 @@ export function EnvironmentsPage({ role }: { role: string }) {
     onError: (err: Error) => setError(err.message),
   });
   return (
-    <Panel title="Environments">
+    <Panel title={t("Environments")}>
       <ul className="divide-y divide-border text-sm">
         {environment.environments.map((item) => (
           <li key={item.id} className="flex items-center justify-between py-3">
             <span className="font-medium">{item.name}</span>
-            {item.id === environment.id && <span className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Current</span>}
+            {item.id === environment.id && <span className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">{t("Current")}</span>}
           </li>
         ))}
       </ul>
@@ -669,8 +685,8 @@ export function EnvironmentsPage({ role }: { role: string }) {
             event.currentTarget.reset();
           }}
         >
-          <input name="name" required placeholder="Name" className="h-10 flex-1 border border-input bg-background px-3 text-sm" />
-          <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground">Add</button>
+          <input name="name" required placeholder={t("Name")} className="h-10 flex-1 border border-input bg-background px-3 text-sm" />
+          <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground">{t("Add")}</button>
         </form>
       )}
       {error && <p className="mt-3 text-sm text-destructive">{error}</p>}

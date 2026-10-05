@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './api';
+import { useI18n } from './i18n';
 
 interface SessionRow {
   id: string;
@@ -23,6 +24,7 @@ interface SnapshotRow {
 }
 
 export function AccountPage() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const sessions = useQuery({ queryKey: ['sessions'], queryFn: () => api<SessionRow[]>('/api/v1/auth/sessions') });
   const [secret, setSecret] = useState('');
@@ -38,7 +40,7 @@ export function AccountPage() {
   });
   const enable = useMutation({
     mutationFn: (code: string) => api('/api/v1/auth/2fa/enable', { method: 'POST', body: JSON.stringify({ code }) }),
-    onSuccess: () => setMessage('MFA enabled'),
+    onSuccess: () => setMessage(t("MFA enabled")),
     onError: (err: Error) => setError(err.message),
   });
   const revoke = useMutation({
@@ -48,14 +50,14 @@ export function AccountPage() {
   const password = useMutation({
     mutationFn: (body: { currentPassword: string; newPassword: string }) =>
       api('/api/v1/auth/first-login/change-password', { method: 'POST', body: JSON.stringify(body) }),
-    onSuccess: () => setMessage('Password updated'),
+    onSuccess: () => setMessage(t("Password updated")),
     onError: (err: Error) => setError(err.message),
   });
 
   return (
     <div className="space-y-4">
       <section className="border border-border bg-card p-4">
-        <h2 className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Password</h2>
+        <h2 className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">{t("Password")}</h2>
         <form
           className="flex flex-wrap gap-2"
           onSubmit={(event) => {
@@ -64,15 +66,15 @@ export function AccountPage() {
             password.mutate({ currentPassword: String(data.get('current') ?? ''), newPassword: String(data.get('next') ?? '') });
           }}
         >
-          <input name="current" type="password" required placeholder="Current password" className="h-10 border border-input bg-background px-3 text-sm" />
-          <input name="next" type="password" required minLength={8} placeholder="New password" className="h-10 border border-input bg-background px-3 text-sm" />
-          <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground">Save</button>
+          <input name="current" type="password" required placeholder={t("Current password")} className="h-10 border border-input bg-background px-3 text-sm" />
+          <input name="next" type="password" required minLength={8} placeholder={t("New password")} className="h-10 border border-input bg-background px-3 text-sm" />
+          <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground">{t("Save")}</button>
         </form>
       </section>
       <section className="border border-border bg-card p-4">
-        <h2 className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Authenticator</h2>
+        <h2 className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">{t("Authenticator")}</h2>
         <button className="h-10 border border-foreground/15 px-3 text-xs font-semibold uppercase tracking-[0.14em]" onClick={() => setup.mutate()}>
-          Generate secret
+          {t("Generate secret")}
         </button>
         {secret && <p className="mt-3 font-mono text-sm">{secret}</p>}
         <form
@@ -83,24 +85,24 @@ export function AccountPage() {
             enable.mutate(String(data.get('code') ?? ''));
           }}
         >
-          <input name="code" inputMode="numeric" pattern="[0-9]{6}" required placeholder="6-digit code" className="h-10 border border-input bg-background px-3 text-sm" />
-          <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground">Enable</button>
+          <input name="code" inputMode="numeric" pattern="[0-9]{6}" required placeholder={t("6-digit code")} className="h-10 border border-input bg-background px-3 text-sm" />
+          <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground">{t("Enable")}</button>
         </form>
       </section>
       <section className="border border-border bg-card p-4">
-        <h2 className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Sessions</h2>
+        <h2 className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">{t("Sessions")}</h2>
         {sessions.data?.map((session) => (
           <div key={session.id} className="flex items-center justify-between gap-3 border-b border-border py-2 text-sm">
             <span>
               {session.ip} · {session.createdAt}
             </span>
             <button className="text-xs uppercase tracking-[0.14em]" onClick={() => revoke.mutate(session.id)}>
-              Revoke
+              {t("Revoke")}
             </button>
           </div>
         ))}
         <button className="mt-3 text-xs uppercase tracking-[0.14em]" onClick={() => api('/api/v1/auth/logout-all', { method: 'POST', body: '{}' }).then(() => queryClient.invalidateQueries({ queryKey: ['sessions'] }))}>
-          Sign out other sessions
+          {t("Sign out other sessions")}
         </button>
       </section>
       {message && <p className="text-sm">{message}</p>}
@@ -110,6 +112,7 @@ export function AccountPage() {
 }
 
 export function IdentityPage() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const providers = useQuery({ queryKey: ['providers'], queryFn: () => api<Provider[]>('/api/v1/identity/providers') });
   const [error, setError] = useState('');
@@ -135,27 +138,27 @@ export function IdentityPage() {
   return (
     <div className="space-y-4">
       <section className="border border-border bg-card p-4">
-        <h2 className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Providers</h2>
+        <h2 className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">{t("Providers")}</h2>
         {providers.data?.map((provider) => (
           <p key={provider.id} className="border-b border-border py-2 text-sm">
             {provider.name} · {provider.type}
           </p>
         ))}
-        {providers.data?.length === 0 && <p className="text-sm text-muted-foreground">No directory providers yet.</p>}
+        {providers.data?.length === 0 && <p className="text-sm text-muted-foreground">{t("No directory providers yet.")}</p>}
       </section>
       <form className="grid gap-2 border border-border bg-card p-4 md:grid-cols-2" onSubmit={onSubmit}>
-        <input name="name" required placeholder="Name" className="h-10 border border-input bg-background px-3 text-sm" />
+        <input name="name" required placeholder={t("Name")} className="h-10 border border-input bg-background px-3 text-sm" />
         <select name="type" className="h-10 border border-input bg-background px-3 text-sm">
           <option value="ldap">ldap</option>
           <option value="oidc">oidc</option>
         </select>
-        <input name="url" placeholder="LDAP URL" className="h-10 border border-input bg-background px-3 text-sm" />
-        <input name="searchBase" placeholder="Search base" className="h-10 border border-input bg-background px-3 text-sm" />
-        <input name="bindDn" placeholder="Bind DN" className="h-10 border border-input bg-background px-3 text-sm" />
-        <input name="issuer" placeholder="OIDC issuer" className="h-10 border border-input bg-background px-3 text-sm" />
-        <input name="clientId" placeholder="OIDC client id" className="h-10 border border-input bg-background px-3 text-sm" />
-        <input name="redirectUrl" placeholder="OIDC redirect URL" className="h-10 border border-input bg-background px-3 text-sm" />
-        <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground">Save provider</button>
+        <input name="url" placeholder={t("LDAP URL")} className="h-10 border border-input bg-background px-3 text-sm" />
+        <input name="searchBase" placeholder={t("Search base")} className="h-10 border border-input bg-background px-3 text-sm" />
+        <input name="bindDn" placeholder={t("Bind DN")} className="h-10 border border-input bg-background px-3 text-sm" />
+        <input name="issuer" placeholder={t("OIDC issuer")} className="h-10 border border-input bg-background px-3 text-sm" />
+        <input name="clientId" placeholder={t("OIDC client id")} className="h-10 border border-input bg-background px-3 text-sm" />
+        <input name="redirectUrl" placeholder={t("OIDC redirect URL")} className="h-10 border border-input bg-background px-3 text-sm" />
+        <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground">{t("Save provider")}</button>
       </form>
       {error && <p className="text-sm text-destructive">{error}</p>}
     </div>
@@ -163,16 +166,18 @@ export function IdentityPage() {
 }
 
 export function MetricsPage() {
+  const { t } = useI18n();
   const metrics = useQuery({ queryKey: ['metrics'], queryFn: () => api<Record<string, unknown>>('/api/v1/metrics') });
   return (
     <section className="border border-border bg-card p-4">
-      <h2 className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Platform</h2>
+      <h2 className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">{t("Platform")}</h2>
       <pre className="overflow-auto text-xs">{JSON.stringify(metrics.data ?? {}, null, 2)}</pre>
     </section>
   );
 }
 
 export function SnapshotsPage() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const snapshots = useQuery({ queryKey: ['snapshots'], queryFn: () => api<SnapshotRow[]>('/api/v1/platform/snapshots') });
   const [error, setError] = useState('');
@@ -188,30 +193,30 @@ export function SnapshotsPage() {
   });
   const sync = useMutation({
     mutationFn: () => api<unknown[]>('/api/v1/platform/sync', { method: 'POST', body: '{}' }),
-    onSuccess: (result) => setNotice(`${result.length} slaves contacted`),
+    onSuccess: (result) => setNotice(t('maintenance.slaves', { count: result.length })),
     onError: (err: Error) => setError(err.message),
   });
   return (
     <section className="border border-border bg-card p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Platform document</h2>
+        <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">{t("Platform document")}</h2>
         <div className="flex gap-2">
           <button className="h-10 border border-foreground/15 px-3 text-xs font-semibold uppercase tracking-[0.14em]" onClick={() => sync.mutate()}>
-            Push to slaves
+            {t("Push to slaves")}
           </button>
           <button className="h-10 bg-primary px-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground" onClick={() => create.mutate()}>
-            Capture
+            {t("Capture")}
           </button>
         </div>
       </div>
-      <p className="mb-3 text-sm text-muted-foreground">Environments, runbooks, alert rules, and policies.</p>
+      <p className="mb-3 text-sm text-muted-foreground">{t("Environments, runbooks, alert rules, and policies.")}</p>
       {snapshots.data?.map((snapshot) => (
         <div key={snapshot.id} className="flex items-center justify-between border-b border-border py-2 text-sm">
           <span>
             {snapshot.createdAt} · {snapshot.actor}
           </span>
           <button className="text-xs uppercase tracking-[0.14em]" onClick={() => apply.mutate(snapshot.id)}>
-            Apply
+            {t("Apply")}
           </button>
         </div>
       ))}
@@ -221,7 +226,9 @@ export function SnapshotsPage() {
   );
 }
 
-export function PasswordChange({ onDone }: { onDone: () => void }) {
+export function PasswordChange({
+  onDone }: { onDone: () => void }) {
+  const { t } = useI18n();
   const [error, setError] = useState('');
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -233,15 +240,15 @@ export function PasswordChange({ onDone }: { onDone: () => void }) {
       });
       onDone();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Password change failed');
+      setError(err instanceof Error ? err.message : t("Password change failed"));
     }
   }
   return (
     <form className="mx-auto mt-24 grid max-w-md gap-3 border border-border bg-card p-6" onSubmit={onSubmit}>
-      <h1 className="text-lg font-semibold">Change your password</h1>
-      <input name="current" type="password" required className="h-10 border border-input bg-background px-3 text-sm" placeholder="Current password" />
-      <input name="next" type="password" required minLength={8} className="h-10 border border-input bg-background px-3 text-sm" placeholder="New password" />
-      <button className="h-10 bg-primary text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground">Continue</button>
+      <h1 className="text-lg font-semibold">{t("Change your password")}</h1>
+      <input name="current" type="password" required className="h-10 border border-input bg-background px-3 text-sm" placeholder={t("Current password")} />
+      <input name="next" type="password" required minLength={8} className="h-10 border border-input bg-background px-3 text-sm" placeholder={t("New password")} />
+      <button className="h-10 bg-primary text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground">{t("Continue")}</button>
       {error && <p className="text-sm text-destructive">{error}</p>}
     </form>
   );
